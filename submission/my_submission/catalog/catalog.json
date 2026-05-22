@@ -1,0 +1,200 @@
+{
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "description": "Append-only log of every CDC event captured from the e-commerce source system. Preserves full change history for replay, point-in-time recovery, and audit trail.",
+      "owner": "data-platform",
+      "consumers": ["data-platform", "analytics", "audit"],
+      "update_cadence": "real-time",
+      "schema": {
+        "sequence": "INTEGER — monotonic CDC event offset for checkpoint-based replay",
+        "operation": "VARCHAR — insert | update | delete",
+        "table_name": "VARCHAR — source table name",
+        "primary_key": "VARCHAR — PK value of the changed row",
+        "data": "VARCHAR (JSON) — full row snapshot at capture time",
+        "captured_at": "TIMESTAMP — UTC capture timestamp"
+      },
+      "lineage": {
+        "depends_on": ["source: customers, products, orders, order_items, inventory_logs, shipments, returns"],
+        "used_by": ["wh_customers, wh_products, wh_orders"]
+      }
+    },
+    {
+      "name": "wh_customers",
+      "layer": "warehouse",
+      "description": "Current-state customer snapshot. Reflects the latest known state of each customer row. Soft-deleted rows are flagged with _deleted=true.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "bi-tools", "product-team"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "customer_id": "VARCHAR — primary key",
+        "name": "VARCHAR — customer name",
+        "email": "VARCHAR — contact email",
+        "country": "VARCHAR — customer country",
+        "status": "VARCHAR — active | suspended | closed",
+        "created_at": "TIMESTAMP — account creation time",
+        "updated_at": "TIMESTAMP — last update time",
+        "_cdc_seq": "INTEGER — sequence of last CDC event that touched this row",
+        "_deleted": "BOOLEAN — true if source row was deleted"
+      }
+    },
+    {
+      "name": "wh_products",
+      "layer": "warehouse",
+      "description": "Current-state product catalog. Includes pricing, stock levels, and availability status.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "bi-tools", "inventory-team"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "product_id": "VARCHAR — primary key",
+        "sku": "VARCHAR — unique stock keeping unit",
+        "name": "VARCHAR — product name",
+        "category": "VARCHAR — product category",
+        "price": "DECIMAL(18,2) — list price in base currency",
+        "stock_qty": "INT — current stock quantity (>= 0 invariant)",
+        "status": "VARCHAR — active | discontinued",
+        "created_at": "TIMESTAMP — product creation time",
+        "updated_at": "TIMESTAMP — last update time",
+        "_cdc_seq": "INTEGER — sequence of last CDC event",
+        "_deleted": "BOOLEAN — true if product was deleted"
+      },
+      "validation_rules": [
+        "price > 0",
+        "stock_qty >= 0",
+        "sku is unique",
+        "status is active or discontinued"
+      ]
+    },
+    {
+      "name": "wh_orders",
+      "layer": "warehouse",
+      "description": "Current-state order snapshot. Contains order-level details including customer reference and total amount.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance", "fulfillment-team"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "order_id": "VARCHAR — primary key",
+        "customer_id": "VARCHAR — foreign key to wh_customers",
+        "order_date": "DATE — when order was placed",
+        "status": "VARCHAR — pending | confirmed | shipped | delivered | cancelled",
+        "total_amount": "DECIMAL(18,2) — order total (= SUM(order_items.line_total))",
+        "currency": "VARCHAR — currency code (e.g. USD)",
+        "created_at": "TIMESTAMP — order creation time",
+        "updated_at": "TIMESTAMP — last update time",
+        "_cdc_seq": "INTEGER — sequence of last CDC event",
+        "_deleted": "BOOLEAN — true if order was deleted"
+      },
+      "validation_rules": [
+        "total_amount > 0",
+        "total_amount = SUM(order_items.line_total) for all order_items",
+        "customer_id must exist in wh_customers",
+        "status follows: pending → confirmed → shipped → delivered (or cancelled at any point)"
+      ]
+    },
+    {
+      "name": "wh_order_items",
+      "layer": "warehouse",
+      "description": "Current-state line items for orders. Each row represents a product purchased in an order.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "order_item_id": "VARCHAR — primary key",
+        "order_id": "VARCHAR — foreign key to wh_orders",
+        "product_id": "VARCHAR — foreign key to wh_products",
+        "quantity": "INT — units purchased (> 0)",
+        "unit_price": "DECIMAL(18,2) — price per unit at time of order",
+        "line_total": "DECIMAL(18,2) — quantity * unit_price",
+        "created_at": "TIMESTAMP — when item was added to order",
+        "_cdc_seq": "INTEGER — sequence of last CDC event",
+        "_deleted": "BOOLEAN — true if item was deleted"
+      },
+      "validation_rules": [
+        "quantity > 0",
+        "unit_price > 0",
+        "line_total = quantity * unit_price",
+        "order_id must exist in wh_orders",
+        "product_id must exist in wh_products"
+      ]
+    },
+    {
+      "name": "wh_inventory_logs",
+      "layer": "warehouse",
+      "description": "Inventory transaction log. Immutable audit trail of stock changes (purchases, returns, adjustments).",
+      "owner": "data-platform",
+      "consumers": ["analytics", "inventory-team"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "log_id": "VARCHAR — primary key",
+        "product_id": "VARCHAR — foreign key to wh_products",
+        "transaction_type": "VARCHAR — purchase | return | adjustment",
+        "qty_change": "INT — quantity changed (can be negative for purchases)",
+        "reason": "VARCHAR — explanation for change",
+        "created_at": "TIMESTAMP — when transaction occurred",
+        "_cdc_seq": "INTEGER — sequence of last CDC event",
+        "_deleted": "BOOLEAN — true if log entry was deleted"
+      }
+    },
+    {
+      "name": "wh_shipments",
+      "layer": "warehouse",
+      "description": "Current-state shipment information. Tracks fulfillment status and delivery details.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "fulfillment-team", "customer-service"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "shipment_id": "VARCHAR — primary key",
+        "order_id": "VARCHAR — foreign key to wh_orders",
+        "status": "VARCHAR — pending | shipped | in_transit | delivered",
+        "carrier": "VARCHAR — shipping carrier name",
+        "tracking_num": "VARCHAR — shipment tracking number",
+        "shipped_at": "TIMESTAMP — when shipment left warehouse",
+        "delivered_at": "TIMESTAMP — when shipment was delivered",
+        "created_at": "TIMESTAMP — when shipment record created",
+        "_cdc_seq": "INTEGER — sequence of last CDC event",
+        "_deleted": "BOOLEAN — true if shipment record was deleted"
+      },
+      "validation_rules": [
+        "order_id must exist in wh_orders",
+        "delivered_at >= shipped_at (when both present)",
+        "status follows: pending → shipped → in_transit → delivered"
+      ]
+    },
+    {
+      "name": "wh_returns",
+      "layer": "warehouse",
+      "description": "Return and refund requests. Tracks customer returns with approval and refund status.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance", "customer-service"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "return_id": "VARCHAR — primary key",
+        "order_item_id": "VARCHAR — foreign key to wh_order_items",
+        "reason": "VARCHAR — reason for return",
+        "status": "VARCHAR — requested | approved | rejected | refunded",
+        "refund_amount": "DECIMAL(18,2) — refund amount",
+        "created_at": "TIMESTAMP — when return was requested",
+        "updated_at": "TIMESTAMP — last status update",
+        "_cdc_seq": "INTEGER — sequence of last CDC event",
+        "_deleted": "BOOLEAN — true if return was deleted"
+      },
+      "validation_rules": [
+        "order_item_id must exist in wh_order_items",
+        "refund_amount > 0",
+        "refund_amount <= original order_item.line_total",
+        "status follows: requested → (approved | rejected) → refunded"
+      ]
+    }
+  ],
+  "platform_metadata": {
+    "version": "1.0",
+    "created_at": "2026-05-22",
+    "description": "E-commerce order management CDC lakehouse platform",
+    "source_domain": "E-commerce orders, fulfillment, and inventory",
+    "strong_entities": ["customers", "products", "orders"],
+    "weak_entities": ["order_items", "inventory_logs", "shipments", "returns"],
+    "cdc_strategy": "Simulated WAL-based with monotonic sequence numbers",
+    "production_equivalent": "Debezium → Kafka → BigQuery/Snowflake"
+  }
+}
