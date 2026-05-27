@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "published_by": "source-team",
+  "description": "Authoritative source schema contract. Updated only when the source team publishes a new schema version.",
+  "tables": {
+    "customers": {
+      "columns": [
+        {"name": "customer_id", "data_type": "bigint", "nullable": false, "column_key": "PRI"},
+        {"name": "name", "data_type": "varchar", "nullable": false, "column_key": ""},
+        {"name": "email", "data_type": "varchar", "nullable": true, "column_key": ""},
+        {"name": "phone", "data_type": "varchar", "nullable": true, "column_key": ""},
+        {"name": "status", "data_type": "enum", "nullable": false, "column_key": ""},
+        {"name": "created_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "updated_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "is_deleted", "data_type": "tinyint", "nullable": false, "column_key": ""}
+      ]
+    },
+    "products": {
+      "columns": [
+        {"name": "product_id", "data_type": "bigint", "nullable": false, "column_key": "PRI"},
+        {"name": "sku", "data_type": "varchar", "nullable": false, "column_key": "UNI"},
+        {"name": "name", "data_type": "varchar", "nullable": false, "column_key": ""},
+        {"name": "unit_price", "data_type": "decimal", "nullable": false, "column_key": ""},
+        {"name": "created_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "updated_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "is_deleted", "data_type": "tinyint", "nullable": false, "column_key": ""}
+      ]
+    },
+    "orders": {
+      "columns": [
+        {"name": "order_id", "data_type": "bigint", "nullable": false, "column_key": "PRI"},
+        {"name": "customer_id", "data_type": "bigint", "nullable": false, "column_key": "MUL"},
+        {"name": "order_status", "data_type": "enum", "nullable": false, "column_key": ""},
+        {"name": "order_total", "data_type": "decimal", "nullable": false, "column_key": ""},
+        {"name": "created_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "updated_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "paid_at", "data_type": "timestamp", "nullable": true, "column_key": ""},
+        {"name": "cancel_reason", "data_type": "varchar", "nullable": true, "column_key": ""},
+        {"name": "is_deleted", "data_type": "tinyint", "nullable": false, "column_key": ""}
+      ]
+    },
+    "order_items": {
+      "columns": [
+        {"name": "order_item_id", "data_type": "bigint", "nullable": false, "column_key": "PRI"},
+        {"name": "order_id", "data_type": "bigint", "nullable": false, "column_key": "MUL"},
+        {"name": "product_id", "data_type": "bigint", "nullable": false, "column_key": "MUL"},
+        {"name": "quantity", "data_type": "int", "nullable": false, "column_key": ""},
+        {"name": "unit_price", "data_type": "decimal", "nullable": false, "column_key": ""},
+        {"name": "line_total", "data_type": "decimal", "nullable": false, "column_key": ""},
+        {"name": "is_deleted", "data_type": "tinyint", "nullable": false, "column_key": ""}
+      ]
+    },
+    "payments": {
+      "columns": [
+        {"name": "payment_id", "data_type": "bigint", "nullable": false, "column_key": "PRI"},
+        {"name": "order_id", "data_type": "bigint", "nullable": false, "column_key": "MUL"},
+        {"name": "payment_amount", "data_type": "decimal", "nullable": false, "column_key": ""},
+        {"name": "payment_status", "data_type": "enum", "nullable": false, "column_key": ""},
+        {"name": "created_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "updated_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "is_deleted", "data_type": "tinyint", "nullable": false, "column_key": ""}
+      ]
+    },
+    "order_status_events": {
+      "columns": [
+        {"name": "status_event_id", "data_type": "bigint", "nullable": false, "column_key": "PRI"},
+        {"name": "order_id", "data_type": "bigint", "nullable": false, "column_key": "MUL"},
+        {"name": "from_status", "data_type": "enum", "nullable": true, "column_key": ""},
+        {"name": "to_status", "data_type": "enum", "nullable": false, "column_key": ""},
+        {"name": "event_at", "data_type": "timestamp", "nullable": false, "column_key": ""},
+        {"name": "is_deleted", "data_type": "tinyint", "nullable": false, "column_key": ""}
+      ]
+    }
+  }
+}
