@@ -1,0 +1,67 @@
+{
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "description": "Append-only Parquet CDC events partitioned by source_table and date. Full change history for audit and point-in-time replay.",
+      "owner": "data-platform",
+      "consumers": ["data-platform", "analytics", "audit"],
+      "update_cadence": "near-real-time",
+      "location": "lake/source_table=*/dt=*/*.parquet",
+      "schema": {
+        "event_id": "BIGINT — monotonic CDC offset",
+        "source_table": "VARCHAR — business table name",
+        "op": "CHAR(1) — I | U | D",
+        "pk_json": "JSON — primary key",
+        "row_json": "JSON — row snapshot",
+        "event_ts": "TIMESTAMP — capture time",
+        "ingested_at": "TIMESTAMP — pipeline write time"
+      }
+    },
+    {
+      "name": "wh_customers",
+      "layer": "warehouse",
+      "description": "Current-state customer snapshot from CDC merge.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "product"],
+      "update_cadence": "near-real-time",
+      "location": "warehouse/warehouse.duckdb#wh_customers",
+      "schema": {
+        "customer_id": "BIGINT PK",
+        "_cdc_event_id": "BIGINT — last applied event",
+        "_deleted": "BOOLEAN — tombstone flag"
+      }
+    },
+    {
+      "name": "wh_orders",
+      "layer": "warehouse",
+      "description": "Current-state orders for analytics; supports restore via lake replay.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance"],
+      "update_cadence": "near-real-time",
+      "location": "warehouse/warehouse.duckdb#wh_orders",
+      "schema": {
+        "order_id": "BIGINT PK",
+        "order_status": "ENUM-like VARCHAR",
+        "order_total": "DECIMAL(12,2)",
+        "_cdc_event_id": "BIGINT",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_order_items",
+      "layer": "warehouse",
+      "description": "Current-state order line items.",
+      "owner": "data-platform",
+      "consumers": ["analytics"],
+      "update_cadence": "near-real-time",
+      "location": "warehouse/warehouse.duckdb#wh_order_items",
+      "schema": {
+        "order_item_id": "BIGINT PK",
+        "line_total": "DECIMAL(12,2)",
+        "_cdc_event_id": "BIGINT",
+        "_deleted": "BOOLEAN"
+      }
+    }
+  ]
+}
