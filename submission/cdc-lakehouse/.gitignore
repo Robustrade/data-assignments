@@ -1,0 +1,8 @@
+lake/
+warehouse/
+state/
+ingest/FAILED_SCHEMA_CHANGE.md
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
