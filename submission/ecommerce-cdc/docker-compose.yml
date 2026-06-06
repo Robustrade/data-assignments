@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kulu_ecom_pg
+    environment:
+      POSTGRES_USER: kulu
+      POSTGRES_PASSWORD: kulu
+      POSTGRES_DB: kulu_ecom
+    ports:
+      - "5432:5432"
+    volumes:
+      # Auto-creates the source schema on first boot.
+      - ./source/postgres_ddl.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kulu -d kulu_ecom"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
