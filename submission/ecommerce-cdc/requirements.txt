@@ -1,0 +1,7 @@
+# Core — pipeline + full test suite run with just these (no external services).
+duckdb>=0.10.0
+pytest>=7.4
+
+# Optional — only for the real PostgreSQL source path (scripts/pg_*.py).
+# Not needed for the simulated pipeline or tests. See TESTING_POSTGRES.md.
+psycopg[binary]>=3.1

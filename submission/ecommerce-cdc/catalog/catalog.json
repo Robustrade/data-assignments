@@ -1,0 +1,161 @@
+{
+  "catalog_version": "1.0",
+  "source_system": "ecommerce-oltp (PostgreSQL)",
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "description": "Append-only, idempotent log of every CDC event captured from the e-commerce source. Full change history for replay, audit, and point-in-time recovery.",
+      "owner": "data-platform",
+      "consumers": ["data-platform", "audit"],
+      "update_cadence": "real-time",
+      "query_path": "SELECT * FROM lake_cdc_events ORDER BY sequence",
+      "schema": {
+        "sequence": "INTEGER (PK) — monotonic capture offset / LSN analogue",
+        "operation": "VARCHAR — insert | update | delete",
+        "table_name": "VARCHAR — source table",
+        "primary_key": "VARCHAR — source row PK value",
+        "data": "VARCHAR (JSON) — row image at capture time",
+        "captured_at": "TIMESTAMP — UTC capture time"
+      }
+    },
+    {
+      "name": "wh_customers",
+      "layer": "warehouse",
+      "description": "Current-state customer snapshot. Soft-deleted rows flagged with _deleted=true.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "marketing"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_customers WHERE NOT _deleted",
+      "schema": {
+        "customer_id": "VARCHAR (PK)",
+        "name": "VARCHAR",
+        "email": "VARCHAR",
+        "status": "VARCHAR — active | suspended | closed",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "INTEGER — sequence of last applied event",
+        "_deleted": "BOOLEAN — soft-delete flag"
+      }
+    },
+    {
+      "name": "wh_products",
+      "layer": "warehouse",
+      "description": "Current-state product catalog snapshot.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "merchandising"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_products WHERE NOT _deleted",
+      "schema": {
+        "product_id": "VARCHAR (PK)",
+        "sku": "VARCHAR",
+        "name": "VARCHAR",
+        "price": "DECIMAL(18,2) — > 0",
+        "status": "VARCHAR — active | discontinued",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "INTEGER",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_orders",
+      "layer": "warehouse",
+      "description": "Current-state order snapshot. total must equal the sum of its order_items.line_total.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_orders WHERE NOT _deleted",
+      "schema": {
+        "order_id": "VARCHAR (PK)",
+        "customer_id": "VARCHAR — FK to wh_customers",
+        "status": "VARCHAR — pending | paid | shipped | delivered | cancelled | refunded",
+        "total": "DECIMAL(18,2) — >= 0",
+        "currency": "VARCHAR",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "INTEGER",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_order_items",
+      "layer": "warehouse",
+      "description": "Current-state order line items (weak entity bound to an order).",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_order_items WHERE NOT _deleted",
+      "schema": {
+        "order_item_id": "VARCHAR (PK)",
+        "order_id": "VARCHAR — FK to wh_orders",
+        "product_id": "VARCHAR — FK to wh_products",
+        "quantity": "INTEGER — > 0",
+        "unit_price": "DECIMAL(18,2) — >= 0",
+        "line_total": "DECIMAL(18,2) — = quantity * unit_price",
+        "_cdc_seq": "INTEGER",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_payments",
+      "layer": "warehouse",
+      "description": "Current-state payment snapshot (weak entity bound to an order).",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_payments WHERE NOT _deleted",
+      "schema": {
+        "payment_id": "VARCHAR (PK)",
+        "order_id": "VARCHAR — FK to wh_orders",
+        "amount": "DECIMAL(18,2) — >= 0",
+        "method": "VARCHAR — card | wallet | bank_transfer",
+        "status": "VARCHAR — pending | settled | failed | refunded",
+        "created_at": "TIMESTAMP",
+        "settled_at": "TIMESTAMP — nullable; >= created_at",
+        "_cdc_seq": "INTEGER",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_orders_history",
+      "layer": "warehouse",
+      "description": "SCD2 version history for orders. Enables point-in-time reconstruction via _valid_from_seq / _valid_to_seq.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "audit"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_orders_history WHERE _valid_from_seq <= :seq AND (_valid_to_seq IS NULL OR _valid_to_seq > :seq)",
+      "schema": {
+        "order_id": "VARCHAR (PK part)",
+        "status": "VARCHAR",
+        "total": "DECIMAL(18,2)",
+        "_valid_from_seq": "INTEGER (PK part) — version opened at this sequence",
+        "_valid_to_seq": "INTEGER — version closed at this sequence (NULL if current)",
+        "_is_current": "BOOLEAN",
+        "_operation": "VARCHAR",
+        "valid_from": "TIMESTAMP",
+        "valid_to": "TIMESTAMP"
+      }
+    },
+    {
+      "name": "wh_payments_history",
+      "layer": "warehouse",
+      "description": "SCD2 version history for payments for point-in-time reconstruction.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "audit", "finance"],
+      "update_cadence": "near-real-time",
+      "query_path": "SELECT * FROM wh_payments_history WHERE _valid_from_seq <= :seq AND (_valid_to_seq IS NULL OR _valid_to_seq > :seq)",
+      "schema": {
+        "payment_id": "VARCHAR (PK part)",
+        "status": "VARCHAR",
+        "amount": "DECIMAL(18,2)",
+        "_valid_from_seq": "INTEGER (PK part)",
+        "_valid_to_seq": "INTEGER",
+        "_is_current": "BOOLEAN",
+        "_operation": "VARCHAR",
+        "valid_from": "TIMESTAMP",
+        "valid_to": "TIMESTAMP"
+      }
+    }
+  ]
+}
