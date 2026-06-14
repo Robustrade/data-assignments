@@ -1,0 +1,64 @@
+version: 1
+
+tables:
+  customers:
+    primary_key: customer_id
+    required:
+      customer_id: string
+      email: string
+      full_name: string
+      customer_status: string
+      updated_at: timestamp
+    nullable:
+      phone_number: string
+      kyc_level: string
+
+  wallet_accounts:
+    primary_key: wallet_id
+    required:
+      wallet_id: string
+      customer_id: string
+      currency: string
+      balance_minor: long
+      wallet_status: string
+      updated_at: timestamp
+    nullable: {}
+
+  merchants:
+    primary_key: merchant_id
+    required:
+      merchant_id: string
+      merchant_name: string
+      merchant_category: string
+      merchant_status: string
+      created_at: timestamp
+      updated_at: timestamp
+    nullable: {}
+
+  payment_transactions:
+    primary_key: transaction_id
+    required:
+      transaction_id: string
+      wallet_id: string
+      customer_id: string
+      amount_minor: long
+      currency: string
+      transaction_status: string
+      event_time: timestamp
+      updated_at: timestamp
+    nullable:
+      merchant_id: string
+      failure_code: string
+
+  payment_attempts:
+    primary_key: attempt_id
+    required:
+      attempt_id: string
+      transaction_id: string
+      processor_name: string
+      attempt_status: string
+      attempted_at: timestamp
+      updated_at: timestamp
+    nullable:
+      failure_code: string
+

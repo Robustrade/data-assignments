@@ -1,0 +1,53 @@
+job_name: cdc_lakehouse_reliability
+catalog: robustrade_dev
+volume_path: /Volumes/robustrade_dev/audit/landing
+
+tasks:
+  - task_key: setup
+    notebook: 00_setup_and_source_model
+    description: Create catalog and schemas, document source model.
+
+  - task_key: generate_cdc_events
+    notebook: 01_generate_cdc_events
+    description: Generate simulated CDC JSON events.
+
+  - task_key: bronze_ingest
+    notebook: 02_bronze_ingest_delta
+    depends_on:
+      - generate_cdc_events
+    description: Ingest CDC JSON into Bronze Delta table.
+
+  - task_key: silver_merge
+    notebook: 03_apply_silver_merges
+    depends_on:
+      - bronze_ingest
+    description: Validate schemas and merge CDC into Silver current-state tables.
+
+  - task_key: cdc_correctness_tests
+    notebook: 06_cdc_correctness_tests
+    depends_on:
+      - silver_merge
+    description: Verify CDC update, delete, idempotency, and duplicate handling.
+
+  - task_key: quality_checks
+    notebook: 05_quality_checks
+    depends_on:
+      - silver_merge
+    description: Run warehouse validation parity checks.
+
+  - task_key: catalog_metadata
+    notebook: 08_catalog_metadata
+    depends_on:
+      - silver_merge
+    description: Document lake and warehouse datasets.
+
+  - task_key: restore_demo
+    notebook: 04_restore_with_delta_time_travel
+    depends_on:
+      - silver_merge
+    description: Demonstrate Delta history and restore.
+
+  - task_key: final_summary
+    notebook: 09_final_summary_or_pr_notes
+    description: Summarize assignment solution and validation results.
+
