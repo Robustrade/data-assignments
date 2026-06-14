@@ -1,0 +1,68 @@
+version: 1
+owner: data-platform
+domain: wallet-payments
+
+datasets:
+  - name: robustrade_dev.bronze.cdc_events
+    layer: bronze
+    platform: Databricks Delta Lake
+    description: Append-only CDC event log retaining all source inserts, updates, and deletes.
+    primary_key: source_table, cdc_sequence
+    update_cadence: per pipeline run
+    consumers:
+      - data engineering
+      - incident response
+      - backfill jobs
+
+  - name: robustrade_dev.silver.customers_current
+    layer: silver
+    platform: Databricks Delta Lake
+    description: Latest non-deleted customer state.
+    primary_key: customer_id
+    update_cadence: per pipeline run
+    consumers:
+      - analytics
+      - risk
+      - customer operations
+
+  - name: robustrade_dev.silver.wallet_accounts_current
+    layer: silver
+    platform: Databricks Delta Lake
+    description: Latest wallet balance and status.
+    primary_key: wallet_id
+    update_cadence: per pipeline run
+    consumers:
+      - analytics
+      - finance operations
+
+  - name: robustrade_dev.silver.merchants_current
+    layer: silver
+    platform: Databricks Delta Lake
+    description: Latest merchant reference state.
+    primary_key: merchant_id
+    update_cadence: per pipeline run
+    consumers:
+      - analytics
+      - risk
+
+  - name: robustrade_dev.silver.payment_transactions_current
+    layer: silver
+    platform: Databricks Delta Lake
+    description: Latest payment transaction state.
+    primary_key: transaction_id
+    update_cadence: per pipeline run
+    consumers:
+      - analytics
+      - finance
+      - reconciliation
+
+  - name: robustrade_dev.silver.payment_attempts_current
+    layer: silver
+    platform: Databricks Delta Lake
+    description: Latest payment processor attempt state.
+    primary_key: attempt_id
+    update_cadence: per pipeline run
+    consumers:
+      - payments operations
+      - incident response
+
