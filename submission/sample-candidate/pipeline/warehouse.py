@@ -1,124 +1,233 @@
-"""
-Warehouse layer — current-state snapshot built from CDC events.
-
-Each warehouse table mirrors the source table with two extra columns:
-  _cdc_seq  : sequence of the last CDC event that touched this row
-  _deleted  : soft-delete flag set when a DELETE event is received
-
-Production analogue: BigQuery/Snowflake tables refreshed by a streaming
-merge job keyed on primary key. SCD2 history tables would sit alongside
-these current-state tables for time-travel queries.
-"""
-
-from __future__ import annotations
-
-import duckdb
-
-from pipeline.cdc import CDCRecord
-
-# Source table → warehouse table
-_TABLE_MAP: dict[str, str] = {
-    "customers": "wh_customers",
-    "wallets": "wh_wallets",
-    "transactions": "wh_transactions",
-}
-
-# Source table → primary key column name
-_PK_MAP: dict[str, str] = {
-    "customers": "customer_id",
-    "wallets": "wallet_id",
-    "transactions": "transaction_id",
-}
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
 
-def create_warehouse_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS wh_customers (
-            customer_id  VARCHAR PRIMARY KEY,
-            name         VARCHAR,
-            email        VARCHAR,
-            status       VARCHAR,
-            created_at   TIMESTAMP,
-            updated_at   TIMESTAMP,
-            _cdc_seq     INTEGER NOT NULL,
-            _deleted     BOOLEAN NOT NULL DEFAULT false
+class SCD2Processor:
+
+    def __init__(self, spark):
+        self.spark = spark
+
+    def merge_dimension(
+            self,
+            incoming_df: DataFrame,
+            existing_df: DataFrame,
+            business_key: str,
+            compare_columns: list
+    ) -> DataFrame:
+
+        current_df = (
+            existing_df
+            .filter(F.col("is_current") == True)
         )
-    """)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS wh_wallets (
-            wallet_id    VARCHAR PRIMARY KEY,
-            customer_id  VARCHAR,
-            balance      DECIMAL(18, 2),
-            currency     VARCHAR,
-            status       VARCHAR,
-            created_at   TIMESTAMP,
-            updated_at   TIMESTAMP,
-            _cdc_seq     INTEGER NOT NULL,
-            _deleted     BOOLEAN NOT NULL DEFAULT false
+        join_condition = [
+            current_df[business_key]
+            == incoming_df[business_key]
+        ]
+
+        joined_df = (
+            incoming_df.alias("new")
+            .join(
+                current_df.alias("old"),
+                join_condition,
+                "left"
+            )
         )
-    """)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS wh_transactions (
-            transaction_id  VARCHAR PRIMARY KEY,
-            wallet_id       VARCHAR,
-            amount          DECIMAL(18, 2),
-            direction       VARCHAR,
-            status          VARCHAR,
-            reference       VARCHAR,
-            created_at      TIMESTAMP,
-            settled_at      TIMESTAMP,
-            _cdc_seq        INTEGER NOT NULL,
-            _deleted        BOOLEAN NOT NULL DEFAULT false
+        change_condition = None
+
+        for col_name in compare_columns:
+
+            condition = (
+                F.col(f"new.{col_name}")
+                !=
+                F.col(f"old.{col_name}")
+            )
+
+            if change_condition is None:
+                change_condition = condition
+            else:
+                change_condition = (
+                    change_condition | condition
+                )
+
+        changed_rows = joined_df.filter(
+            change_condition
         )
-    """)
 
-
-def apply_cdc_records(
-    conn: duckdb.DuckDBPyConnection, records: list[CDCRecord]
-) -> None:
-    """
-    Apply CDC records to the warehouse current-state tables in sequence order.
-
-    - insert / update  → upsert (insert new row or overwrite existing)
-    - delete           → set _deleted = true
-    """
-    for record in sorted(records, key=lambda r: r.sequence):
-        wh_table = _TABLE_MAP.get(record.table)
-        pk_col = _PK_MAP.get(record.table)
-        if not wh_table or not pk_col:
-            continue
-
-        pk_val = record.primary_key
-
-        if record.operation == "delete":
-            conn.execute(
-                f"UPDATE {wh_table} SET _deleted = true, _cdc_seq = ?"
-                f" WHERE {pk_col} = ?",
-                [record.sequence, pk_val],
+        expired_rows = (
+            current_df.alias("old")
+            .join(
+                changed_rows.select(
+                    business_key
+                ).alias("chg"),
+                business_key
             )
-            continue
-
-        data = {**record.data, "_cdc_seq": record.sequence, "_deleted": False}
-        cols = list(data.keys())
-        vals = list(data.values())
-        placeholders = ", ".join(["?"] * len(vals))
-
-        existing = conn.execute(
-            f"SELECT COUNT(*) FROM {wh_table} WHERE {pk_col} = ?",
-            [pk_val],
-        ).fetchone()[0]
-
-        if existing:
-            set_clause = ", ".join([f"{c} = ?" for c in cols])
-            conn.execute(
-                f"UPDATE {wh_table} SET {set_clause} WHERE {pk_col} = ?",
-                vals + [pk_val],
+            .withColumn(
+                "effective_to",
+                F.current_timestamp()
             )
-        else:
-            col_list = ", ".join(cols)
-            conn.execute(
-                f"INSERT INTO {wh_table} ({col_list}) VALUES ({placeholders})",
-                vals,
+            .withColumn(
+                "is_current",
+                F.lit(False)
             )
+        )
+
+        new_versions = (
+            changed_rows
+            .select(
+                "new.*"
+            )
+            .withColumn(
+                "effective_from",
+                F.current_timestamp()
+            )
+            .withColumn(
+                "effective_to",
+                F.lit(None)
+            )
+            .withColumn(
+                "is_current",
+                F.lit(True)
+            )
+        )
+
+        unchanged_rows = (
+            existing_df.alias("e")
+            .join(
+                changed_rows.select(
+                    business_key
+                ),
+                business_key,
+                "leftanti"
+            )
+        )
+
+        final_df = (
+            unchanged_rows
+            .unionByName(expired_rows)
+            .unionByName(new_versions)
+        )
+
+        return final_df
+
+
+class CustomerDimensionBuilder:
+
+    def __init__(self, spark):
+        self.spark = spark
+
+    def build(
+            self,
+            silver_customer_df,
+            existing_dimension_df
+    ):
+
+        processor = SCD2Processor(
+            self.spark
+        )
+
+        return processor.merge_dimension(
+            incoming_df=silver_customer_df,
+            existing_df=existing_dimension_df,
+            business_key="customer_id",
+            compare_columns=[
+                "email",
+                "first_name",
+                "last_name",
+                "phone",
+                "customer_status"
+            ]
+        )
+
+class ProductDimensionBuilder:
+
+    def __init__(self, spark):
+        self.spark = spark
+
+    def build(
+            self,
+            silver_product_df,
+            existing_dimension_df
+    ):
+
+        processor = SCD2Processor(
+            self.spark
+        )
+
+        return processor.merge_dimension(
+            incoming_df=silver_product_df,
+            existing_df=existing_dimension_df,
+            business_key="product_id",
+            compare_columns=[
+                "sku",
+                "product_name",
+                "category",
+                "unit_price",
+                "product_status"
+            ]
+        )
+
+class FactOrderBuilder:
+
+    @staticmethod
+    def build(
+            silver_orders_df
+    ):
+
+        return silver_orders_df
+
+class FactOrderItemBuilder:
+
+    @staticmethod
+    def build(
+            silver_order_items_df
+    ):
+
+        return silver_order_items_df
+
+class FactPaymentBuilder:
+
+    @staticmethod
+    def build(
+            silver_payment_df
+    ):
+
+        return silver_payment_df
+
+class WarehouseWriter:
+
+    def __init__(
+            self,
+            warehouse_base_path
+    ):
+
+        self.base_path = warehouse_base_path
+
+    def write_dimension(
+            self,
+            df,
+            dimension_name
+    ):
+
+        (
+            df.write
+            .mode("overwrite")
+            .parquet(
+                f"{self.base_path}/{dimension_name}"
+            )
+        )
+
+    def write_fact(
+            self,
+            df,
+            fact_name
+    ):
+
+        (
+            df.write
+            .mode("overwrite")
+            .parquet(
+                f"{self.base_path}/{fact_name}"
+            )
+        )

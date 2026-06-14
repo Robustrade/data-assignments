@@ -1,84 +1,190 @@
-"""
-Source schema for a payments/wallet system.
-
-Domain: customers own wallets; wallets have transactions.
-
-Strong entities : customers, wallets
-Weak entities   : transactions (lifecycle tied to wallet)
-
-Invariants:
-- wallet.balance >= 0
-- transaction.amount > 0
-- status fields restricted to known enum values
-- settled_at must be >= created_at when present
-"""
-
-import duckdb
-
-# Expected columns per table — used by schema-contract checks.
-SCHEMA_CONTRACT: dict[str, list[str]] = {
-    "customers": ["customer_id", "name", "email", "status", "created_at", "updated_at"],
-    "wallets": [
-        "wallet_id",
-        "customer_id",
-        "balance",
-        "currency",
-        "status",
-        "created_at",
-        "updated_at",
-    ],
-    "transactions": [
-        "transaction_id",
-        "wallet_id",
-        "amount",
-        "direction",
-        "status",
-        "reference",
-        "created_at",
-        "settled_at",
-    ],
-}
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum
+from typing import Optional, Dict, Any
 
 
-def create_source_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    """Create source tables with constraints in the given DuckDB connection."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS customers (
-            customer_id  VARCHAR PRIMARY KEY,
-            name         VARCHAR NOT NULL,
-            email        VARCHAR NOT NULL,
-            status       VARCHAR NOT NULL
-                     CHECK (status IN ('active', 'suspended', 'closed')),
-            created_at   TIMESTAMP NOT NULL,
-            updated_at   TIMESTAMP NOT NULL
-        )
-    """)
+# =====================================================
+# ENUMS
+# =====================================================
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS wallets (
-            wallet_id    VARCHAR PRIMARY KEY,
-            customer_id  VARCHAR NOT NULL REFERENCES customers(customer_id),
-            balance      DECIMAL(18, 2) NOT NULL DEFAULT 0.00
-                     CHECK (balance >= 0),
-            currency     VARCHAR NOT NULL,
-            status       VARCHAR NOT NULL
-                     CHECK (status IN ('active', 'frozen', 'closed')),
-            created_at   TIMESTAMP NOT NULL,
-            updated_at   TIMESTAMP NOT NULL
-        )
-    """)
+class CustomerStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            transaction_id  VARCHAR PRIMARY KEY,
-            wallet_id       VARCHAR NOT NULL REFERENCES wallets(wallet_id),
-            amount          DECIMAL(18, 2) NOT NULL CHECK (amount > 0),
-            direction       VARCHAR NOT NULL
-                        CHECK (direction IN ('credit', 'debit')),
-            status          VARCHAR NOT NULL
-                        CHECK (status IN ('pending', 'settled', 'failed', 'reversed')),
-            reference       VARCHAR,
-            created_at      TIMESTAMP NOT NULL,
-            settled_at      TIMESTAMP
-        )
-    """)
+
+class ProductStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    DISCONTINUED = "DISCONTINUED"
+
+
+class OrderStatus(str, Enum):
+    CREATED = "CREATED"
+    PAID = "PAID"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
+    CANCELLED = "CANCELLED"
+
+
+class PaymentStatus(str, Enum):
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    PENDING = "PENDING"
+
+
+class CDCOperation(str, Enum):
+    INSERT = "INSERT"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
+
+
+# =====================================================
+# STRONG ENTITIES
+# =====================================================
+
+@dataclass
+class Customer:
+
+    customer_id: int
+
+    email: str
+
+    first_name: str
+
+    last_name: Optional[str]
+
+    phone: Optional[str]
+
+    customer_status: CustomerStatus
+
+    created_at: datetime
+
+    updated_at: datetime
+
+
+@dataclass
+class Product:
+
+    product_id: int
+
+    sku: str
+
+    product_name: str
+
+    category: Optional[str]
+
+    unit_price: Decimal
+
+    product_status: ProductStatus
+
+    created_at: datetime
+
+    updated_at: datetime
+
+
+@dataclass
+class Order:
+
+    order_id: int
+
+    customer_id: int
+
+    order_status: OrderStatus
+
+    total_amount: Decimal
+
+    created_at: datetime
+
+    updated_at: datetime
+
+
+# =====================================================
+# WEAK ENTITIES
+# =====================================================
+
+@dataclass
+class OrderItem:
+
+    order_item_id: int
+
+    order_id: int
+
+    product_id: int
+
+    quantity: int
+
+    unit_price: Decimal
+
+    line_amount: Decimal
+
+    created_at: datetime
+
+
+@dataclass
+class PaymentAttempt:
+
+    payment_attempt_id: int
+
+    order_id: int
+
+    payment_status: PaymentStatus
+
+    gateway_transaction_id: Optional[str]
+
+    amount: Decimal
+
+    attempt_timestamp: datetime
+
+
+# =====================================================
+# CDC EVENT
+# =====================================================
+
+@dataclass
+class CDCEvent:
+
+    sequence_number: int
+
+    table_name: str
+
+    operation: CDCOperation
+
+    primary_key: Any
+
+    before_image: Optional[Dict[str, Any]]
+
+    after_image: Optional[Dict[str, Any]]
+
+    event_timestamp: datetime
+
+
+# =====================================================
+# SCHEMA CONTRACT
+# =====================================================
+
+@dataclass
+class SchemaContract:
+
+    table_name: str
+
+    columns: Dict[str, str]
+
+
+# =====================================================
+# DATA QUALITY FAILURE
+# =====================================================
+
+@dataclass
+class ValidationFailure:
+
+    rule_name: str
+
+    table_name: str
+
+    record_id: str
+
+    failure_reason: str
+
+    event_timestamp: datetime

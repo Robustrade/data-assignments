@@ -1,0 +1,121 @@
+class PostgresMetadataReader:
+
+    def get_table_schemas(self):
+
+        return {
+
+            "customers": {
+
+                "customer_id": "bigint",
+
+                "email": "string",
+
+                "first_name": "string",
+
+                "last_name": "string",
+
+                "phone": "string",
+
+                "customer_status": "string",
+
+                "created_at": "timestamp",
+
+                "updated_at": "timestamp"
+            },
+
+            "products": {
+
+                "product_id": "bigint",
+
+                "sku": "string",
+
+                "product_name": "string",
+
+                "category": "string",
+
+                "unit_price": "decimal(18,2)",
+
+                "product_status": "string",
+
+                "created_at": "timestamp",
+
+                "updated_at": "timestamp"
+            },
+
+            "orders": {
+
+                "order_id": "bigint",
+
+                "customer_id": "bigint",
+
+                "order_status": "string",
+
+                "total_amount": "decimal(18,2)",
+
+                "created_at": "timestamp",
+
+                "updated_at": "timestamp"
+            },
+
+            "order_items": {
+
+                "order_item_id": "bigint",
+
+                "order_id": "bigint",
+
+                "product_id": "bigint",
+
+                "quantity": "integer",
+
+                "unit_price": "decimal(18,2)",
+
+                "line_amount": "decimal(18,2)",
+
+                "created_at": "timestamp"
+            },
+
+            "payment_attempts": {
+
+                "payment_attempt_id": "bigint",
+
+                "order_id": "bigint",
+
+                "payment_status": "string",
+
+                "gateway_transaction_id": "string",
+
+                "amount": "decimal(18,2)",
+
+                "attempt_timestamp": "timestamp"
+            }
+        }
+
+    def get_enum_domains(self):
+
+        return {
+
+            "customer_status": [
+                "ACTIVE",
+                "INACTIVE",
+                "SUSPENDED"
+            ],
+
+            "product_status": [
+                "ACTIVE",
+                "DISCONTINUED"
+            ],
+
+            "order_status": [
+                "CREATED",
+                "PAID",
+                "SHIPPED",
+                "DELIVERED",
+                "CANCELLED"
+            ],
+
+            "payment_status": [
+                "SUCCESS",
+                "FAILED",
+                "PENDING"
+            ]
+        }

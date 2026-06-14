@@ -1,77 +1,85 @@
 {
   "datasets": [
+
     {
-      "name": "lake_cdc_events",
-      "layer": "lake",
-      "description": "Append-only log of every CDC event captured from the payments source system. Preserves full change history for replay and point-in-time recovery.",
-      "owner": "data-platform",
-      "consumers": ["data-platform", "analytics", "audit"],
-      "update_cadence": "real-time",
-      "schema": {
-        "sequence": "INTEGER — monotonic capture offset",
-        "operation": "VARCHAR — insert | update | delete",
-        "table_name": "VARCHAR — source table name",
-        "primary_key": "VARCHAR — source row PK value",
-        "data": "VARCHAR (JSON) — full row snapshot at capture time",
-        "captured_at": "TIMESTAMP — UTC capture time"
-      }
+      "name": "bronze.cdc_events",
+      "layer": "bronze",
+      "path": "data/bronze/cdc_events",
+      "owner": "data-engineering",
+      "refresh_frequency": "5 minutes",
+      "description": "Immutable CDC event history from PostgreSQL source system"
     },
+
     {
-      "name": "wh_customers",
-      "layer": "warehouse",
-      "description": "Current-state customer snapshot. Reflects the latest known state of each customer row. Soft-deleted rows are flagged with _deleted=true.",
-      "owner": "data-platform",
-      "consumers": ["analytics", "product", "finance"],
-      "update_cadence": "near-real-time",
-      "schema": {
-        "customer_id": "VARCHAR — primary key",
-        "name": "VARCHAR",
-        "email": "VARCHAR",
-        "status": "VARCHAR — active | suspended | closed",
-        "created_at": "TIMESTAMP",
-        "updated_at": "TIMESTAMP",
-        "_cdc_seq": "INTEGER — sequence of last CDC event",
-        "_deleted": "BOOLEAN — true if source row was deleted"
-      }
+      "name": "silver.customers",
+      "layer": "silver",
+      "path": "data/silver/customers",
+      "owner": "data-engineering",
+      "refresh_frequency": "5 minutes",
+      "description": "Latest customer snapshot derived from CDC events"
     },
+
     {
-      "name": "wh_wallets",
-      "layer": "warehouse",
-      "description": "Current-state wallet snapshot. Balance reflects the latest value written via CDC. Negative balances are a data quality violation.",
-      "owner": "data-platform",
-      "consumers": ["analytics", "finance"],
-      "update_cadence": "near-real-time",
-      "schema": {
-        "wallet_id": "VARCHAR — primary key",
-        "customer_id": "VARCHAR — FK to wh_customers",
-        "balance": "DECIMAL(18,2)",
-        "currency": "VARCHAR",
-        "status": "VARCHAR — active | frozen | closed",
-        "created_at": "TIMESTAMP",
-        "updated_at": "TIMESTAMP",
-        "_cdc_seq": "INTEGER",
-        "_deleted": "BOOLEAN"
-      }
+      "name": "silver.products",
+      "layer": "silver",
+      "path": "data/silver/products",
+      "owner": "data-engineering",
+      "refresh_frequency": "5 minutes",
+      "description": "Latest product snapshot derived from CDC events"
     },
+
     {
-      "name": "wh_transactions",
+      "name": "silver.orders",
+      "layer": "silver",
+      "path": "data/silver/orders",
+      "owner": "data-engineering",
+      "refresh_frequency": "5 minutes",
+      "description": "Latest order snapshot derived from CDC events"
+    },
+
+    {
+      "name": "warehouse.dim_customer",
       "layer": "warehouse",
-      "description": "Current-state transaction snapshot. Each row is the latest state of a transaction from the source. Amount must always be positive.",
-      "owner": "data-platform",
-      "consumers": ["analytics", "finance", "audit"],
-      "update_cadence": "near-real-time",
-      "schema": {
-        "transaction_id": "VARCHAR — primary key",
-        "wallet_id": "VARCHAR — FK to wh_wallets",
-        "amount": "DECIMAL(18,2) — always > 0",
-        "direction": "VARCHAR — credit | debit",
-        "status": "VARCHAR — pending | settled | failed | reversed",
-        "reference": "VARCHAR — nullable external reference",
-        "created_at": "TIMESTAMP",
-        "settled_at": "TIMESTAMP — nullable until settled",
-        "_cdc_seq": "INTEGER",
-        "_deleted": "BOOLEAN"
-      }
+      "path": "data/warehouse/dim_customer",
+      "owner": "analytics",
+      "refresh_frequency": "5 minutes",
+      "description": "Customer SCD Type 2 dimension"
+    },
+
+    {
+      "name": "warehouse.dim_product",
+      "layer": "warehouse",
+      "path": "data/warehouse/dim_product",
+      "owner": "analytics",
+      "refresh_frequency": "5 minutes",
+      "description": "Product SCD Type 2 dimension"
+    },
+
+    {
+      "name": "warehouse.fact_orders",
+      "layer": "warehouse",
+      "path": "data/warehouse/fact_orders",
+      "owner": "analytics",
+      "refresh_frequency": "5 minutes",
+      "description": "Current order fact table"
+    },
+
+    {
+      "name": "warehouse.fact_order_items",
+      "layer": "warehouse",
+      "path": "data/warehouse/fact_order_items",
+      "owner": "analytics",
+      "refresh_frequency": "5 minutes",
+      "description": "Order item fact table"
+    },
+
+    {
+      "name": "warehouse.fact_payment_attempts",
+      "layer": "warehouse",
+      "path": "data/warehouse/fact_payment_attempts",
+      "owner": "analytics",
+      "refresh_frequency": "5 minutes",
+      "description": "Payment attempts fact table"
     }
   ]
 }
