@@ -1,0 +1,288 @@
+{
+  "catalog_version": 1,
+  "domain": "wallet-payments-transfers",
+  "owner": "data-platform",
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "type": "append-only-change-log",
+      "description": "Append-only log of every CDC event captured from the wallet/payments source system. Preserves the full change history with before/after row images so the warehouse can be deterministically rebuilt and any prior state can be reconstructed.",
+      "owner": "data-platform",
+      "consumers": ["data-platform", "audit", "analytics-engineering"],
+      "update_cadence": "real-time",
+      "sla_class": "tier-1",
+      "tags": ["cdc", "raw", "audit", "replayable"],
+      "primary_key": ["sequence"],
+      "partitioning": "production: partitioned by table_name + captured_at::date",
+      "retention_policy": "infinite (audit) — production: 7 years cold storage",
+      "schema": {
+        "sequence":     {"type": "INTEGER",   "nullable": false, "description": "monotonic capture offset (Postgres LSN / Kafka offset analogue)"},
+        "operation":    {"type": "VARCHAR",   "nullable": false, "description": "insert | update | delete"},
+        "table_name":   {"type": "VARCHAR",   "nullable": false, "description": "name of the source table"},
+        "primary_key":  {"type": "VARCHAR",   "nullable": false, "description": "primary key value of the source row"},
+        "before_image": {"type": "VARCHAR",   "nullable": true,  "description": "JSON of the row before the change; null on inserts"},
+        "after_image":  {"type": "VARCHAR",   "nullable": true,  "description": "JSON of the row after the change; null on deletes"},
+        "captured_at":  {"type": "TIMESTAMP", "nullable": false, "description": "UTC timestamp the change was captured"}
+      }
+    },
+    {
+      "name": "wh_customers",
+      "layer": "warehouse",
+      "type": "current-state",
+      "description": "Latest known state of every customer. Soft-deleted rows are flagged with _deleted=true and retained for analytics over deleted accounts. Sourced via CDC merge from the source customers table.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "product", "finance", "support"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["customer", "current-state", "scd1"],
+      "primary_key": ["customer_id"],
+      "schema": {
+        "customer_id":       "VARCHAR — primary key, source identifier",
+        "full_name":         "VARCHAR",
+        "email":             "VARCHAR",
+        "country_code":      "VARCHAR — ISO-3166 alpha-2",
+        "status":            "VARCHAR — active | suspended | closed",
+        "registration_date": "DATE",
+        "created_at":        "TIMESTAMP",
+        "updated_at":        "TIMESTAMP",
+        "_cdc_seq":          "INTEGER — sequence of last CDC event applied",
+        "_deleted":          "BOOLEAN — true when the source row was deleted"
+      }
+    },
+    {
+      "name": "wh_payment_methods",
+      "layer": "warehouse",
+      "type": "current-state",
+      "description": "Latest known state of every saved payment method (card / bank / upi). Weak entity tied to a customer; if the customer is removed in the source, the method is marked _deleted=true here.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "fraud", "finance"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["payment-method", "current-state", "scd1"],
+      "primary_key": ["payment_method_id"],
+      "schema": {
+        "payment_method_id": "VARCHAR — primary key",
+        "customer_id":       "VARCHAR — FK to wh_customers",
+        "method_type":       "VARCHAR — card | bank | upi",
+        "masked_identifier": "VARCHAR",
+        "is_default":        "BOOLEAN",
+        "status":            "VARCHAR — active | expired | revoked",
+        "created_at":        "TIMESTAMP",
+        "updated_at":        "TIMESTAMP",
+        "_cdc_seq":          "INTEGER",
+        "_deleted":          "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_wallets",
+      "layer": "warehouse",
+      "type": "current-state",
+      "description": "Latest known state of every wallet. Balance is the authoritative current value from the source; non-negative balance is enforced both at the source and as a downstream data-quality assertion.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance", "treasury"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["wallet", "balance", "current-state", "scd1"],
+      "primary_key": ["wallet_id"],
+      "schema": {
+        "wallet_id":   "VARCHAR — primary key",
+        "customer_id": "VARCHAR — FK to wh_customers",
+        "currency":    "VARCHAR — ISO-4217",
+        "balance":     "DECIMAL(18,4) — always >= 0",
+        "status":      "VARCHAR — active | frozen | closed",
+        "created_at":  "TIMESTAMP",
+        "updated_at":  "TIMESTAMP",
+        "_cdc_seq":    "INTEGER",
+        "_deleted":    "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_transfers",
+      "layer": "warehouse",
+      "type": "current-state",
+      "description": "Latest known state of every transfer between two wallets. Status reflects the most recent transition; settled_at is non-null only for settled transfers.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance", "fraud", "treasury"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["transfer", "current-state", "scd1"],
+      "primary_key": ["transfer_id"],
+      "schema": {
+        "transfer_id":       "VARCHAR — primary key",
+        "from_wallet_id":    "VARCHAR — FK to wh_wallets, source",
+        "to_wallet_id":      "VARCHAR — FK to wh_wallets, destination",
+        "payment_method_id": "VARCHAR — FK to wh_payment_methods, nullable",
+        "amount":            "DECIMAL(18,4) — always > 0",
+        "currency":          "VARCHAR — ISO-4217",
+        "status":            "VARCHAR — pending | settled | failed | reversed",
+        "reference":         "VARCHAR — nullable external memo",
+        "failure_reason":    "VARCHAR — nullable",
+        "created_at":        "TIMESTAMP",
+        "settled_at":        "TIMESTAMP — null until settled",
+        "_cdc_seq":          "INTEGER",
+        "_deleted":          "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_transfer_events",
+      "layer": "warehouse",
+      "type": "current-state",
+      "description": "Audit trail of state transitions for transfers. Weak entity; one transfer typically has 2-3 events.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "fraud", "support"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-2",
+      "tags": ["transfer", "audit", "current-state"],
+      "primary_key": ["transfer_event_id"],
+      "schema": {
+        "transfer_event_id": "VARCHAR — primary key",
+        "transfer_id":       "VARCHAR — FK to wh_transfers",
+        "from_status":       "VARCHAR — nullable for the first event",
+        "to_status":         "VARCHAR — pending | settled | failed | reversed",
+        "note":              "VARCHAR — nullable",
+        "occurred_at":       "TIMESTAMP",
+        "_cdc_seq":          "INTEGER",
+        "_deleted":          "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_ledger_entries",
+      "layer": "warehouse",
+      "type": "current-state",
+      "description": "Append-only ledger entries for every credit/debit on a wallet. SUM(signed_amount) per wallet must equal wh_wallets.balance — checked by the data-quality layer.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance", "treasury", "audit"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["ledger", "audit", "current-state", "monetary-integrity"],
+      "primary_key": ["ledger_entry_id"],
+      "schema": {
+        "ledger_entry_id": "VARCHAR — primary key",
+        "wallet_id":       "VARCHAR — FK to wh_wallets",
+        "transfer_id":     "VARCHAR — FK to wh_transfers, nullable for funding entries",
+        "direction":       "VARCHAR — credit | debit",
+        "amount":          "DECIMAL(18,4) — always > 0",
+        "signed_amount":   "DECIMAL(18,4) — +amount for credit, -amount for debit",
+        "balance_after":   "DECIMAL(18,4) — non-negative wallet balance after the entry",
+        "occurred_at":     "TIMESTAMP",
+        "_cdc_seq":        "INTEGER",
+        "_deleted":        "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_customers_history",
+      "layer": "warehouse",
+      "type": "scd2-history",
+      "description": "SCD2 history for customers. Every revision carries _valid_from / _valid_to / _is_current / _op so a point-in-time customer snapshot can be reconstructed for restore, time travel, or audit.",
+      "owner": "data-platform",
+      "consumers": ["audit", "finance", "data-platform"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["customer", "scd2", "time-travel"],
+      "primary_key": ["customer_id", "_valid_from"],
+      "schema_extension": {
+        "_cdc_seq":    "INTEGER",
+        "_valid_from": "TIMESTAMP — start of this version's validity",
+        "_valid_to":   "TIMESTAMP — end of validity, NULL for current",
+        "_is_current": "BOOLEAN",
+        "_op":         "VARCHAR — insert | update | delete"
+      }
+    },
+    {
+      "name": "wh_payment_methods_history",
+      "layer": "warehouse",
+      "type": "scd2-history",
+      "description": "SCD2 history for payment_methods.",
+      "owner": "data-platform",
+      "consumers": ["audit", "fraud"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-2",
+      "tags": ["payment-method", "scd2"],
+      "primary_key": ["payment_method_id", "_valid_from"],
+      "schema_extension": {
+        "_cdc_seq":    "INTEGER",
+        "_valid_from": "TIMESTAMP",
+        "_valid_to":   "TIMESTAMP",
+        "_is_current": "BOOLEAN",
+        "_op":         "VARCHAR"
+      }
+    },
+    {
+      "name": "wh_wallets_history",
+      "layer": "warehouse",
+      "type": "scd2-history",
+      "description": "SCD2 history for wallets — the canonical source for any 'what was the wallet balance at time T' query.",
+      "owner": "data-platform",
+      "consumers": ["finance", "treasury", "audit"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["wallet", "balance", "scd2", "time-travel"],
+      "primary_key": ["wallet_id", "_valid_from"],
+      "schema_extension": {
+        "_cdc_seq":    "INTEGER",
+        "_valid_from": "TIMESTAMP",
+        "_valid_to":   "TIMESTAMP",
+        "_is_current": "BOOLEAN",
+        "_op":         "VARCHAR"
+      }
+    },
+    {
+      "name": "wh_transfers_history",
+      "layer": "warehouse",
+      "type": "scd2-history",
+      "description": "SCD2 history for transfers — supports replaying or reversing a transfer's lifecycle for ops/audit.",
+      "owner": "data-platform",
+      "consumers": ["audit", "fraud", "finance"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["transfer", "scd2", "time-travel"],
+      "primary_key": ["transfer_id", "_valid_from"],
+      "schema_extension": {
+        "_cdc_seq":    "INTEGER",
+        "_valid_from": "TIMESTAMP",
+        "_valid_to":   "TIMESTAMP",
+        "_is_current": "BOOLEAN",
+        "_op":         "VARCHAR"
+      }
+    },
+    {
+      "name": "wh_transfer_events_history",
+      "layer": "warehouse",
+      "type": "scd2-history",
+      "description": "SCD2 history for transfer_events.",
+      "owner": "data-platform",
+      "consumers": ["audit"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-2",
+      "tags": ["transfer", "scd2"],
+      "primary_key": ["transfer_event_id", "_valid_from"],
+      "schema_extension": {
+        "_cdc_seq":    "INTEGER",
+        "_valid_from": "TIMESTAMP",
+        "_valid_to":   "TIMESTAMP",
+        "_is_current": "BOOLEAN",
+        "_op":         "VARCHAR"
+      }
+    },
+    {
+      "name": "wh_ledger_entries_history",
+      "layer": "warehouse",
+      "type": "scd2-history",
+      "description": "SCD2 history for ledger_entries — should be a no-op for inserts since ledger entries are append-only at the source, but having SCD2 lets the warehouse trap any unexpected mutation.",
+      "owner": "data-platform",
+      "consumers": ["audit", "finance", "treasury"],
+      "update_cadence": "near-real-time",
+      "sla_class": "tier-1",
+      "tags": ["ledger", "scd2", "audit"],
+      "primary_key": ["ledger_entry_id", "_valid_from"],
+      "schema_extension": {
+        "_cdc_seq":    "INTEGER",
+        "_valid_from": "TIMESTAMP",
+        "_valid_to":   "TIMESTAMP",
+        "_is_current": "BOOLEAN",
+        "_op":         "VARCHAR"
+      }
+    }
+  ]
+}
