@@ -1,0 +1,23 @@
+{
+  "name": "ticketing-postgres-cdc",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "debezium",
+    "database.password": "${file:/secrets/postgres.properties:password}",
+    "database.dbname": "ticketing",
+    "topic.prefix": "ticketing",
+    "plugin.name": "pgoutput",
+    "slot.name": "ticketing_cdc_slot",
+    "publication.name": "ticketing_publication",
+    "table.include.list": "public.venues,public.events,public.customers,public.seats,public.reservations,public.reservation_items,public.payments,public.tickets",
+    "tombstones.on.delete": "false",
+    "include.schema.changes": "true",
+    "key.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "key.converter.schema.registry.url": "http://schema-registry:8081",
+    "value.converter.schema.registry.url": "http://schema-registry:8081"
+  }
+}
+
