@@ -1,0 +1,123 @@
+{
+  "datasets": [
+    {
+      "name": "raw_contract.kafka_cdc_event_shape",
+      "layer": "raw",
+      "platform": "s3_file_stream",
+      "owner": "data-platform",
+      "description": "Raw Kafka CDC events landed in S3 before Spark processing.",
+      "cadence": "continuous_landing",
+      "retention": "kafka_retention_window",
+      "consumers": ["spark_streaming", "replay"]
+    },
+    {
+      "name": "silver.ticketing_cdc_events",
+      "layer": "silver",
+      "platform": "iceberg_s3",
+      "owner": "data-platform",
+      "description": "Immutable CDC event log for ticketing changes.",
+      "cadence": "5_minute_microbatch",
+      "retention": "indefinite",
+      "consumers": ["data_engineering", "audit", "recovery"],
+      "primary_key": ["event_id"]
+    },
+    {
+      "name": "silver.reservations_current",
+      "layer": "silver",
+      "platform": "iceberg_s3",
+      "owner": "data-platform",
+      "description": "Current reservation state from CDC.",
+      "cadence": "5_minute_microbatch",
+      "retention": "current_plus_history",
+      "consumers": ["analytics_engineering", "data_quality"],
+      "primary_key": ["reservation_id"]
+    },
+    {
+      "name": "silver.reservation_items_current",
+      "layer": "silver",
+      "platform": "iceberg_s3",
+      "owner": "data-platform",
+      "description": "Current reservation item state from CDC.",
+      "cadence": "5_minute_microbatch",
+      "retention": "current_plus_history",
+      "consumers": ["analytics_engineering", "data_quality"],
+      "primary_key": ["reservation_item_id"]
+    },
+    {
+      "name": "silver.payments_current",
+      "layer": "silver",
+      "platform": "iceberg_s3",
+      "owner": "data-platform",
+      "description": "Current payment state from CDC.",
+      "cadence": "5_minute_microbatch",
+      "retention": "current_plus_history",
+      "consumers": ["analytics_engineering", "finance"],
+      "primary_key": ["payment_id"]
+    },
+    {
+      "name": "silver.reservations_history",
+      "layer": "silver",
+      "platform": "iceberg_s3",
+      "owner": "data-platform",
+      "description": "SCD2 reservation history for restore and audit.",
+      "cadence": "5_minute_microbatch",
+      "retention": "indefinite",
+      "consumers": ["audit", "recovery", "data_engineering"],
+      "primary_key": ["cdc_event_id"]
+    },
+    {
+      "name": "WH_TICKETING_CURRENT.RESERVATIONS_CURRENT",
+      "layer": "warehouse",
+      "platform": "snowflake",
+      "owner": "analytics-engineering",
+      "description": "Snowflake current reservation table refreshed from silver.",
+      "cadence": "5_minute_refresh",
+      "retention": "business_defined",
+      "consumers": ["business_intelligence", "operations"],
+      "primary_key": ["reservation_id"]
+    },
+    {
+      "name": "WH_TICKETING_CURRENT.RESERVATION_ITEMS_CURRENT",
+      "layer": "warehouse",
+      "platform": "snowflake",
+      "owner": "analytics-engineering",
+      "description": "Snowflake current reservation item table refreshed from silver.",
+      "cadence": "5_minute_refresh",
+      "retention": "business_defined",
+      "consumers": ["business_intelligence", "operations"],
+      "primary_key": ["reservation_item_id"]
+    },
+    {
+      "name": "WH_TICKETING_CURRENT.PAYMENTS_CURRENT",
+      "layer": "warehouse",
+      "platform": "snowflake",
+      "owner": "analytics-engineering",
+      "description": "Snowflake current payment table refreshed from silver.",
+      "cadence": "5_minute_refresh",
+      "retention": "business_defined",
+      "consumers": ["business_intelligence", "finance"],
+      "primary_key": ["payment_id"]
+    },
+    {
+      "name": "WH_TICKETING_HISTORY.RESERVATIONS_HISTORY",
+      "layer": "warehouse",
+      "platform": "snowflake",
+      "owner": "analytics-engineering",
+      "description": "Snowflake reservation history for point-in-time recovery.",
+      "cadence": "5_minute_refresh",
+      "retention": "business_defined",
+      "consumers": ["audit", "recovery"],
+      "primary_key": ["event_id_cdc"]
+    },
+    {
+      "name": "ops.schema_failures",
+      "layer": "ops",
+      "platform": "iceberg_s3",
+      "owner": "data-platform",
+      "description": "Schema compatibility failures and stop-the-line alerts.",
+      "cadence": "on_failure",
+      "retention": "365_days",
+      "consumers": ["data_platform_oncall"]
+    }
+  ]
+}
