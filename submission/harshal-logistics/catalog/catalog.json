@@ -1,0 +1,117 @@
+{
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "description": "Append-only log of every CDC event captured from the global trade source system. Preserves full change history for replay, auditing, and point-in-time recovery.",
+      "owner": "data-platform-team",
+      "consumers": ["data-platform", "analytics", "audit"],
+      "update_cadence": "real-time",
+      "schema": {
+        "sequence": "INTEGER — monotonic capture LSN offset",
+        "operation": "VARCHAR — insert | update | delete",
+        "table_name": "VARCHAR — source table name",
+        "primary_key": "VARCHAR — source row PK value",
+        "data": "VARCHAR (JSON) — full row snapshot at capture time",
+        "captured_at": "TIMESTAMP — UTC capture time"
+      }
+    },
+    {
+      "name": "wh_trade_partners",
+      "layer": "warehouse",
+      "description": "Current-state snapshot of trade partners (importers/exporters). Soft-deleted partners are flagged with _deleted=true.",
+      "owner": "data-platform-team",
+      "consumers": ["analytics", "compliance", "finance"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "partner_id": "VARCHAR — primary key",
+        "company_name": "VARCHAR — partner business name",
+        "country": "VARCHAR — registered country",
+        "partner_type": "VARCHAR — buyer | seller",
+        "compliance_status": "VARCHAR — active | suspended | under_review",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "INTEGER — last CDC event sequence",
+        "_deleted": "BOOLEAN — true if row deleted at source"
+      }
+    },
+    {
+      "name": "wh_trade_contracts",
+      "layer": "warehouse",
+      "description": "Current-state snapshot of trade agreements. Invariant total_value_usd = weight_metric_tons * price_per_ton_usd.",
+      "owner": "data-platform-team",
+      "consumers": ["analytics", "finance", "compliance"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "contract_id": "VARCHAR — primary key",
+        "seller_id": "VARCHAR — FK to wh_trade_partners",
+        "buyer_id": "VARCHAR — FK to wh_trade_partners",
+        "commodity_type": "VARCHAR — commodity classification",
+        "weight_metric_tons": "DECIMAL(18,4) — contract cargo weight",
+        "price_per_ton_usd": "DECIMAL(18,2) — cost per ton",
+        "total_value_usd": "DECIMAL(18,2) — total contract value",
+        "status": "VARCHAR — pending | active | completed | cancelled",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "INTEGER — last CDC event sequence",
+        "_deleted": "BOOLEAN — true if row deleted at source"
+      }
+    },
+    {
+      "name": "wh_shipment_cargo",
+      "layer": "warehouse",
+      "description": "Current-state snapshot of cargo shipments. Tracks ports of loading/discharge and delivery dates.",
+      "owner": "data-platform-team",
+      "consumers": ["analytics", "logistics", "supply-chain"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "cargo_id": "VARCHAR — primary key",
+        "contract_id": "VARCHAR — FK to wh_trade_contracts",
+        "carrier_name": "VARCHAR — freight carrier",
+        "container_number": "VARCHAR — container tracking ID",
+        "port_of_loading": "VARCHAR — port of origin",
+        "port_of_discharge": "VARCHAR — destination port",
+        "estimated_delivery": "TIMESTAMP — expected arrival date",
+        "actual_delivery": "TIMESTAMP — physical arrival date, null until arrived",
+        "_cdc_seq": "INTEGER — last CDC event sequence",
+        "_deleted": "BOOLEAN — true if row deleted at source"
+      }
+    },
+    {
+      "name": "wh_customs_clearances",
+      "layer": "warehouse",
+      "description": "Current-state snapshot of customs clearances. Invariant: cargo cannot be delivered if customs is rejected/held.",
+      "owner": "data-platform-team",
+      "consumers": ["analytics", "compliance", "logistics"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "clearance_id": "VARCHAR — primary key",
+        "contract_id": "VARCHAR — FK to wh_trade_contracts",
+        "clearing_country": "VARCHAR — country of import/export",
+        "duty_fee_usd": "DECIMAL(18,2) — customs tariff amount",
+        "status": "VARCHAR — pending | approved | held_in_customs | rejected",
+        "cleared_at": "TIMESTAMP — timestamp of regulatory approval",
+        "_cdc_seq": "INTEGER — last CDC event sequence",
+        "_deleted": "BOOLEAN — true if row deleted at source"
+      }
+    },
+    {
+      "name": "wh_settlement_transactions",
+      "layer": "warehouse",
+      "description": "Current-state snapshot of financial trade payments. Invariant: settled amount sum <= contract total_value_usd.",
+      "owner": "data-platform-team",
+      "consumers": ["analytics", "finance", "audit"],
+      "update_cadence": "near-real-time",
+      "schema": {
+        "transaction_id": "VARCHAR — primary key",
+        "contract_id": "VARCHAR — FK to wh_trade_contracts",
+        "payment_amount_usd": "DECIMAL(18,2) — transaction payment value",
+        "settlement_type": "VARCHAR — wire_transfer | letter_of_credit",
+        "status": "VARCHAR — pending | settled | failed",
+        "settled_at": "TIMESTAMP — transaction execution timestamp",
+        "_cdc_seq": "INTEGER — last CDC event sequence",
+        "_deleted": "BOOLEAN — true if row deleted at source"
+      }
+    }
+  ]
+}

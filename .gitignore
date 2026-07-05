@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL support files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# pytest cache
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# DuckDB / Local db artifacts
+*.db
+*.wal
