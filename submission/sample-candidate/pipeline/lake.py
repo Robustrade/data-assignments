@@ -1,69 +1,22 @@
-"""
-Lake layer — append-only storage for every CDC event.
-
-Every change is written exactly once. The lake is the source of truth for
-point-in-time replay and historical reconstruction.
-
-Production analogue: Parquet/Delta files on S3 or GCS, partitioned by
-table_name and captured_at date. No row is ever modified or deleted.
-"""
-
-from __future__ import annotations
-
-import json
-from datetime import datetime
-
 import duckdb
+from source.models import SCHEMA_CONTRACT
 
-from pipeline.cdc import CDCRecord
-
-
-def create_lake_table(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS lake_cdc_events (
-            sequence     INTEGER  NOT NULL,
-            operation    VARCHAR  NOT NULL,
-            table_name   VARCHAR  NOT NULL,
-            primary_key  VARCHAR  NOT NULL,
-            data         VARCHAR  NOT NULL,
-            captured_at  TIMESTAMP NOT NULL
-        )
-    """)
-
-
-def append_to_lake(conn: duckdb.DuckDBPyConnection, records: list[CDCRecord]) -> int:
-    """
-    Append CDC records to the lake.
-
-    Returns the number of records written.
-    Idempotency note: in production, deduplicate by sequence before appending.
-    """
-    if not records:
-        return 0
-
-    rows = [
-        (
-            r.sequence,
-            r.operation,
-            r.table,
-            r.primary_key,
-            _serialize(r.data),
-            r.captured_at,
-        )
-        for r in records
-    ]
-    conn.executemany(
-        "INSERT INTO lake_cdc_events VALUES (?, ?, ?, ?, ?, ?)",
-        rows,
-    )
-    return len(rows)
-
-
-def _serialize(data: dict) -> str:
-    return json.dumps(data, default=_json_default)
-
-
-def _json_default(obj: object) -> str:
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+def init_lake_store(source_conn: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyConnection:
+    """Creates the structural schema for an immutable append-only historical audit ledger."""
+    lake_conn = duckdb.connect(':memory:')
+    
+    for table_name in SCHEMA_CONTRACT.keys():
+        source_info = source_conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+        col_definitions = [f"{col[1]} {col[2]}" for col in source_info]
+        
+        # Inject auditing metadata fields required to guarantee perfect recovery tracking
+        col_definitions.extend([
+            "_cdc_op_type CHAR(1)",
+            "_cdc_extracted_at TIMESTAMP",
+            "_cdc_lsn_version BIGINT"
+        ])
+        
+        definitions_str = ", ".join(col_definitions)
+        lake_conn.execute(f"CREATE TABLE lake_{table_name}_history ({definitions_str});")
+        
+    return lake_conn

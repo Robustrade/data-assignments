@@ -1,89 +1,48 @@
-"""
-CDC capture layer.
+import datetime
+from source.models import SCHEMA_CONTRACT
 
-Simulates WAL-based change capture: every insert/update/delete on the source
-produces a CDCRecord with a monotonically increasing sequence number.
+class SchemaMismatchException(Exception): pass
 
-Replay safety: callers can checkpoint the last processed sequence and call
-records_since(offset) to replay only unprocessed changes after a restart.
-"""
+class CDCPipeline:
+    def __init__(self, source_conn, lake_conn):
+        self.source_conn = source_conn
+        self.lake_conn = lake_conn
+        self.high_watermarks = {table: datetime.datetime.min for table in SCHEMA_CONTRACT.keys()}
 
-from __future__ import annotations
+    def verify_schema_contract(self):
+        """Active safety sentinel. Throws exception if upstream columns are corrupted."""
+        for table_name, expected_cols in SCHEMA_CONTRACT.items():
+            actual_cols = self.source_conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+            actual_col_names = [col[1] for col in actual_cols]
+            
+            for col in expected_cols:
+                if col not in actual_col_names:
+                    raise SchemaMismatchException(
+                        f"CRITICAL DRIFT DETECTED: Column '{col}' is missing on source table '{table_name}'!"
+                    )
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
-
-VALID_OPERATIONS = frozenset({"insert", "update", "delete"})
-
-
-@dataclass
-class CDCRecord:
-    operation: str
-    table: str
-    primary_key: str
-    data: dict[str, Any]
-    captured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    sequence: int = 0
-
-    def __post_init__(self) -> None:
-        if self.operation not in VALID_OPERATIONS:
-            raise ValueError(
-                f"Invalid CDC operation {self.operation!r}. "
-                f"Must be one of: {sorted(VALID_OPERATIONS)}"
-            )
-
-
-class CDCCapture:
-    """
-    In-process CDC log.
-
-    Production analogue: a Debezium/Kafka connector reading Postgres WAL.
-    Each record carries a sequence number equivalent to a Kafka offset or
-    Postgres LSN for checkpoint-based replay.
-    """
-
-    def __init__(self) -> None:
-        self._log: list[CDCRecord] = []
-        self._seq: int = 0
-
-    # ── public write API ─────────────────────────────────────────────────────
-
-    def insert(self, table: str, pk: str, data: dict[str, Any]) -> CDCRecord:
-        return self._record("insert", table, pk, data)
-
-    def update(self, table: str, pk: str, data: dict[str, Any]) -> CDCRecord:
-        return self._record("update", table, pk, data)
-
-    def delete(self, table: str, pk: str, data: dict[str, Any]) -> CDCRecord:
-        return self._record("delete", table, pk, data)
-
-    # ── public read / replay API ─────────────────────────────────────────────
-
-    def records_since(self, offset: int = 0) -> list[CDCRecord]:
-        """Return all records with sequence > offset (checkpoint replay)."""
-        return [r for r in self._log if r.sequence > offset]
-
-    @property
-    def latest_sequence(self) -> int:
-        return self._seq
-
-    @property
-    def log(self) -> list[CDCRecord]:
-        return list(self._log)
-
-    # ── internal ─────────────────────────────────────────────────────────────
-
-    def _record(
-        self, operation: str, table: str, pk: str, data: dict[str, Any]
-    ) -> CDCRecord:
-        self._seq += 1
-        rec = CDCRecord(
-            operation=operation,
-            table=table,
-            primary_key=pk,
-            data=data,
-            sequence=self._seq,
-        )
-        self._log.append(rec)
-        return rec
+    def ingest_table_changes(self, table_name: str, lsn: int):
+        """Pulls incremental change logs past the last recorded high-watermark."""
+        self.verify_schema_contract()
+        now = datetime.datetime.now()
+        
+        time_col = "created_at" if table_name == "transactions" else "updated_at"
+        cols_str = ", ".join(SCHEMA_CONTRACT[table_name])
+        
+        changes = self.source_conn.execute(f"""
+            SELECT {cols_str} FROM {table_name} WHERE {time_col} > ? ORDER BY {time_col} ASC
+        """, (self.high_watermarks[table_name],)).fetchall()
+        
+        if not changes:
+            return
+            
+        for row in changes:
+            # Map mutations safely. If it's the initial pull, flag as Insert; otherwise Update
+            op_type = 'I' if self.high_watermarks[table_name] == datetime.datetime.min else 'U'
+            placeholders = ", ".join(["?"] * (len(row) + 3))
+            
+            self.lake_conn.execute(f"""
+                INSERT INTO lake_{table_name}_history VALUES ({placeholders})
+            """, (*row, op_type, now, lsn))
+            
+        self.high_watermarks[table_name] = max([row[-1] for row in changes])

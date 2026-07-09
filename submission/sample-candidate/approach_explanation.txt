@@ -1,0 +1,42 @@
+Pull Request: Technical Approach for CDC Pipeline
+What is this?
+Before writing the final code for the assignment, this dummy PR maps out the technical plan for building a reliable Change Data Capture (CDC) platform using Python and DuckDB, based on the criteria in the DATA_ASSIGNMENT.md.
+
+
+How it Works (The 4 Layers)
+1. The Source System (source_db.py)
+Instead of a single flat file, we use a proper relational setup (like customers and orders).
+
+Strict Rules: Financial data uses exact DECIMAL(18,2) types instead of unsafe floats, and statuses are restricted using database enums.
+
+2. The Ingestion Guard (cdc_pipeline.py)
+This moves data safely from the source into the lakehouse.
+
+Fail-Closed Schema Check: Before pulling data, the pipeline verifies the source structure against a contract. If a column is dropped or changed upstream, the pipeline stops immediately (SchemaMismatchException) so it doesn't corrupt anything downstream.
+
+Checkpoints: It tracks data using timestamps. If the pipeline crashes mid-run, it resumes exactly where it left off without duplicating data or creating gaps.
+
+3. The Data Lake: Absolute History (lake_append.py)
+The Data Lake is an append-only ledger. It never updates or overwrites records. Every single change (Insert, Update, Delete) creates a new row stamped with metadata:
+
+_cdc_op_type: Was it an (I)nsert, (U)pdate, or (D)elete?
+
+_cdc_extracted_at: When did we pull it?
+
+_cdc_lsn_version: The exact sequence order.
+
+4. The Warehouse: Clean Analytics & Time Travel (warehouse_snapshot.py)
+The Warehouse provides a clean view of the latest data for end users.
+
+The Latest State: It reads the lake's history and runs a window function (ROW_NUMBER() OVER) to grab only the latest update for each record. Deleted rows are filtered out automatically.
+
+Time Travel: Because the lake contains an unbroken history of changes, you can view exactly what the warehouse looked like at any point in the past just by filtering the query by a target timestamp (WHERE _cdc_extracted_at <= target_time).
+
+Testing the Edge Cases
+The test suite skips basic checks and focuses heavily on failure recovery:
+
+The Lifecycle Test: Inserts, updates, and deletes a record. It ensures the lake records all 3 events, while the warehouse correctly shows 0 active rows.
+
+The Circuit Breaker Test: Drops a source column to prove the pipeline actively stops running.
+
+The Time-Travel Test: Queries the warehouse at a specific historical timestamp to verify it rolls back accurately.
