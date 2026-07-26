@@ -1,0 +1,94 @@
+{
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "description": "Append-only log of every change captured from the order-management source (customers, orders, order_items, payments), published to Kafka and written out as Parquet by the Spark Structured Streaming consumer (pipeline/spark_consumer.py). One row per insert/update/delete, keyed by Kafka's own message offset as `sequence`. This is the durable, replayable history the warehouse is rebuilt from - nothing here is ever updated or deleted.",
+      "owner": "data-platform",
+      "consumers": ["data-platform", "analytics", "audit"],
+      "update_cadence": "streaming - applied within one trigger interval of the source change in continuous mode, or on-demand via trigger(availableNow=True)",
+      "storage": "Parquet files under data/lake_parquet/event_date=YYYY-MM-DD/*.parquet, partitioned by day",
+      "schema": {
+        "sequence": "BIGINT - Kafka offset for this event; monotonic because the topic has a single partition",
+        "operation": "VARCHAR - insert | update | delete",
+        "table_name": "VARCHAR - which source table this event came from",
+        "primary_key": "VARCHAR - the source row's PK value",
+        "data": "VARCHAR - full row snapshot at capture time, as a JSON string",
+        "captured_at": "VARCHAR - UTC capture time, ISO-8601 string",
+        "event_date": "DATE - partition column, derived from captured_at"
+      }
+    },
+    {
+      "name": "wh_customers",
+      "layer": "warehouse",
+      "description": "Latest known state of each customer. Rows are never physically removed - a source delete sets _deleted instead, so history stays intact for restore/audit.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "product"],
+      "update_cadence": "near real-time, derived from lake_cdc_events",
+      "schema": {
+        "customer_id": "VARCHAR - primary key",
+        "name": "VARCHAR",
+        "email": "VARCHAR",
+        "status": "VARCHAR - active | suspended | closed",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "BIGINT - sequence of the last applied change",
+        "_deleted": "BOOLEAN - true if the source row was deleted"
+      }
+    },
+    {
+      "name": "wh_orders",
+      "layer": "warehouse",
+      "description": "Latest known state of each order. total_amount is expected to reconcile with the sum of that order's wh_order_items - checked in scripts/run_data_quality_checks.py, not enforced by the table itself.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "product", "finance"],
+      "update_cadence": "near real-time, derived from lake_cdc_events",
+      "schema": {
+        "order_id": "VARCHAR - primary key",
+        "customer_id": "VARCHAR - references wh_customers",
+        "status": "VARCHAR - pending | paid | shipped | cancelled | refunded",
+        "total_amount": "DECIMAL(18,2)",
+        "discount_code": "VARCHAR - nullable",
+        "created_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "_cdc_seq": "BIGINT",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_order_items",
+      "layer": "warehouse",
+      "description": "Latest known state of each order line item. Has no lifecycle of its own - always tied to a parent order in wh_orders.",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance"],
+      "update_cadence": "near real-time, derived from lake_cdc_events",
+      "schema": {
+        "order_item_id": "VARCHAR - primary key",
+        "order_id": "VARCHAR - references wh_orders",
+        "sku": "VARCHAR",
+        "quantity": "INTEGER - > 0",
+        "unit_price": "DECIMAL(18,2) - >= 0",
+        "_cdc_seq": "BIGINT",
+        "_deleted": "BOOLEAN"
+      }
+    },
+    {
+      "name": "wh_payments",
+      "layer": "warehouse",
+      "description": "Latest known state of each payment attempt against an order. A single order can have more than one payment row (retries).",
+      "owner": "data-platform",
+      "consumers": ["analytics", "finance", "audit"],
+      "update_cadence": "near real-time, derived from lake_cdc_events",
+      "schema": {
+        "payment_id": "VARCHAR - primary key",
+        "order_id": "VARCHAR - references wh_orders",
+        "amount": "DECIMAL(18,2) - > 0",
+        "status": "VARCHAR - pending | settled | failed | refunded",
+        "created_at": "TIMESTAMP",
+        "paid_at": "TIMESTAMP - nullable until settled, must be >= created_at",
+        "_cdc_seq": "BIGINT",
+        "_deleted": "BOOLEAN"
+      }
+    }
+  ]
+}

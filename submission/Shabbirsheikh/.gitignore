@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# all pipeline-generated/local runtime state - source db, lake parquet,
+# warehouse db, spark checkpoints. Fully rebuildable from source code +
+# seed_demo_data.py + spark_consumer.py, so none of it belongs in git.
+data/
+spark-warehouse/
+artifacts/
+
+# personal scratch/debug script, not part of the submission
+scripts/data_load.py
