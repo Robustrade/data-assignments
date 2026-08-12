@@ -1,0 +1,379 @@
+{
+  "version": "1.0.0",
+  "catalog_name": "payments_lakehouse_catalog",
+  "description": "Metadata registry describing Lake and Warehouse datasets for the Payments & Digital Wallet platform.",
+  "datasets": [
+    {
+      "name": "lake_cdc_events",
+      "layer": "lake",
+      "table_name": "lake_cdc_events",
+      "owner": "Data Platform Engineering",
+      "intended_audience": "Data Engineers, Platform Engineers, Audit Systems",
+      "update_cadence": "Near Real-Time Stream Ingestion (Append-Only)",
+      "description": "Durable append-only bronze stream log capturing all raw insert, update, and delete CDC events from the transactional source database.",
+      "schema": [
+        {
+          "name": "sequence",
+          "type": "INTEGER",
+          "description": "Monotonically increasing CDC event sequence number (LSN / offset equivalent).",
+          "nullable": false
+        },
+        {
+          "name": "operation",
+          "type": "VARCHAR",
+          "description": "CDC operation type ('insert', 'update', 'delete').",
+          "nullable": false
+        },
+        {
+          "name": "table_name",
+          "type": "VARCHAR",
+          "description": "Source table name associated with the change event.",
+          "nullable": false
+        },
+        {
+          "name": "primary_key",
+          "type": "VARCHAR",
+          "description": "Primary key identifier of the changed entity.",
+          "nullable": false
+        },
+        {
+          "name": "data",
+          "type": "VARCHAR",
+          "description": "JSON serialized payload containing full entity field state.",
+          "nullable": false
+        },
+        {
+          "name": "captured_at",
+          "type": "TIMESTAMP",
+          "description": "UTC timestamp when the change event was captured.",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "wh_customers",
+      "layer": "warehouse",
+      "table_name": "wh_customers",
+      "owner": "Data Engineering & Customer Analytics",
+      "intended_audience": "Data Analysts, Product Analytics, Customer Operations",
+      "update_cadence": "Near Real-Time CDC Merge",
+      "description": "Silver layer curated current-state snapshot of customer accounts, reflecting latest status and soft-delete tracking.",
+      "schema": [
+        {
+          "name": "customer_id",
+          "type": "VARCHAR",
+          "description": "Unique primary key identifying the customer.",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR",
+          "description": "Full name of the customer.",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR",
+          "description": "Customer primary email address.",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR",
+          "description": "Account status enum ('active', 'suspended', 'closed').",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when customer was created.",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when customer profile was last updated.",
+          "nullable": false
+        },
+        {
+          "name": "_cdc_seq",
+          "type": "INTEGER",
+          "description": "Sequence number of the last applied CDC record.",
+          "nullable": false
+        },
+        {
+          "name": "_deleted",
+          "type": "BOOLEAN",
+          "description": "Soft-delete flag (true if entity was deleted in source).",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "wh_wallets",
+      "layer": "warehouse",
+      "table_name": "wh_wallets",
+      "owner": "Data Engineering & Financial Operations",
+      "intended_audience": "Financial Operations, Risk & Fraud Analytics, BI Teams",
+      "update_cadence": "Near Real-Time CDC Merge",
+      "description": "Silver layer current-state snapshot of digital wallet balances, owner relationships, and status.",
+      "schema": [
+        {
+          "name": "wallet_id",
+          "type": "VARCHAR",
+          "description": "Unique primary key identifying the wallet.",
+          "nullable": false
+        },
+        {
+          "name": "customer_id",
+          "type": "VARCHAR",
+          "description": "Foreign key referencing the owning customer.",
+          "nullable": false
+        },
+        {
+          "name": "balance",
+          "type": "DECIMAL(18,2)",
+          "description": "Current available wallet balance (must be >= 0).",
+          "nullable": false
+        },
+        {
+          "name": "currency",
+          "type": "VARCHAR",
+          "description": "Three-letter ISO currency code (e.g. USD, EUR).",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR",
+          "description": "Wallet status enum ('active', 'frozen', 'closed').",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when wallet was opened.",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when wallet balance or state was updated.",
+          "nullable": false
+        },
+        {
+          "name": "_cdc_seq",
+          "type": "INTEGER",
+          "description": "Sequence number of the last applied CDC record.",
+          "nullable": false
+        },
+        {
+          "name": "_deleted",
+          "type": "BOOLEAN",
+          "description": "Soft-delete flag.",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "wh_merchants",
+      "layer": "warehouse",
+      "table_name": "wh_merchants",
+      "owner": "Data Engineering & Merchant Operations",
+      "intended_audience": "Merchant Analytics, Business Development, Reporting",
+      "update_cadence": "Near Real-Time CDC Merge",
+      "description": "Silver layer current-state snapshot of registered merchants.",
+      "schema": [
+        {
+          "name": "merchant_id",
+          "type": "VARCHAR",
+          "description": "Unique primary key identifying the merchant.",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR",
+          "description": "Registered business name of merchant.",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR",
+          "description": "Contact email of merchant.",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR",
+          "description": "Merchant status enum ('active', 'inactive').",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when merchant was registered.",
+          "nullable": false
+        },
+        {
+          "name": "_cdc_seq",
+          "type": "INTEGER",
+          "description": "Sequence number of the last applied CDC record.",
+          "nullable": false
+        },
+        {
+          "name": "_deleted",
+          "type": "BOOLEAN",
+          "description": "Soft-delete flag.",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "wh_transactions",
+      "layer": "warehouse",
+      "table_name": "wh_transactions",
+      "owner": "Data Engineering & Payments Analytics",
+      "intended_audience": "Payment Operations, BI Analysts, Finance Teams",
+      "update_cadence": "Near Real-Time CDC Merge",
+      "description": "Silver layer current-state snapshot of transaction processing status, fees, amounts, and timestamps.",
+      "schema": [
+        {
+          "name": "transaction_id",
+          "type": "VARCHAR",
+          "description": "Unique primary key identifying the transaction.",
+          "nullable": false
+        },
+        {
+          "name": "wallet_id",
+          "type": "VARCHAR",
+          "description": "Foreign key referencing source wallet.",
+          "nullable": false
+        },
+        {
+          "name": "merchant_id",
+          "type": "VARCHAR",
+          "description": "Foreign key referencing destination merchant (if applicable).",
+          "nullable": true
+        },
+        {
+          "name": "amount",
+          "type": "DECIMAL(18,2)",
+          "description": "Transaction payment monetary amount (> 0).",
+          "nullable": false
+        },
+        {
+          "name": "fee",
+          "type": "DECIMAL(18,2)",
+          "description": "Transaction processing fee (>= 0).",
+          "nullable": false
+        },
+        {
+          "name": "direction",
+          "type": "VARCHAR",
+          "description": "Flow direction enum ('credit', 'debit').",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR",
+          "description": "Lifecycle status enum ('pending', 'settled', 'failed', 'reversed').",
+          "nullable": false
+        },
+        {
+          "name": "reference",
+          "type": "VARCHAR",
+          "description": "External payment reference string.",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when transaction was initiated.",
+          "nullable": false
+        },
+        {
+          "name": "settled_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when transaction was settled or finalized.",
+          "nullable": true
+        },
+        {
+          "name": "_cdc_seq",
+          "type": "INTEGER",
+          "description": "Sequence number of the last applied CDC record.",
+          "nullable": false
+        },
+        {
+          "name": "_deleted",
+          "type": "BOOLEAN",
+          "description": "Soft-delete flag.",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "wh_ledger_entries",
+      "layer": "warehouse",
+      "table_name": "wh_ledger_entries",
+      "owner": "Data Engineering & Audit Compliance",
+      "intended_audience": "Financial Auditors, Compliance Officers, Risk Engineers",
+      "update_cadence": "Near Real-Time CDC Merge",
+      "description": "Silver layer current-state snapshot of double-entry accounting ledger records.",
+      "schema": [
+        {
+          "name": "entry_id",
+          "type": "VARCHAR",
+          "description": "Unique primary key identifying the ledger entry.",
+          "nullable": false
+        },
+        {
+          "name": "transaction_id",
+          "type": "VARCHAR",
+          "description": "Foreign key referencing parent transaction.",
+          "nullable": false
+        },
+        {
+          "name": "wallet_id",
+          "type": "VARCHAR",
+          "description": "Foreign key referencing affected wallet.",
+          "nullable": false
+        },
+        {
+          "name": "entry_type",
+          "type": "VARCHAR",
+          "description": "Entry accounting side ('debit', 'credit').",
+          "nullable": false
+        },
+        {
+          "name": "amount",
+          "type": "DECIMAL(18,2)",
+          "description": "Monetary entry amount (> 0).",
+          "nullable": false
+        },
+        {
+          "name": "balance_after",
+          "type": "DECIMAL(18,2)",
+          "description": "Wallet balance after applying ledger entry.",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMP",
+          "description": "Timestamp when ledger entry was recorded.",
+          "nullable": false
+        },
+        {
+          "name": "_cdc_seq",
+          "type": "INTEGER",
+          "description": "Sequence number of the last applied CDC record.",
+          "nullable": false
+        },
+        {
+          "name": "_deleted",
+          "type": "BOOLEAN",
+          "description": "Soft-delete flag.",
+          "nullable": false
+        }
+      ]
+    }
+  ]
+}
