@@ -72,12 +72,13 @@ Every INSERT, UPDATE and DELETE operation will generate a CDC event containing:
 - event_id
 - table_name
 - operation
-- record_id
-- changed data
-- event_timestamp
-- sequence_number
+- primary_key
+- before state
+- after state
+- captured_at
 
-The sequence number will provide deterministic ordering.
+The durable change log assigns a monotonically increasing sequence_number
+to each unique event to provide deterministic ordering.
 
 ---
 
@@ -109,11 +110,11 @@ Each event contains:
 
 - source table
 - operation
-- record identifier
+- primary key
 - before state where applicable
 - after state where applicable
-- event timestamp
-- sequence number
+- captured timestamp
+- sequence number assigned by the change log
 
 The lake is the historical source of CDC events.
 
