@@ -1,0 +1,156 @@
+{
+  "customer": {
+    "created_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    },
+    "email": {
+      "nullable": false,
+      "type": "text"
+    },
+    "id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "is_deleted": {
+      "nullable": false,
+      "type": "boolean"
+    },
+    "name": {
+      "nullable": false,
+      "type": "text"
+    },
+    "updated_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    }
+  },
+  "payment_attempt": {
+    "attempt_no": {
+      "nullable": false,
+      "type": "integer"
+    },
+    "created_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    },
+    "failure_reason": {
+      "nullable": true,
+      "type": "text"
+    },
+    "id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "is_deleted": {
+      "nullable": false,
+      "type": "boolean"
+    },
+    "status": {
+      "nullable": false,
+      "type": "USER-DEFINED"
+    },
+    "transfer_id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "updated_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    }
+  },
+  "transfer": {
+    "amount": {
+      "nullable": false,
+      "type": "numeric"
+    },
+    "created_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    },
+    "dest_wallet_id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "is_deleted": {
+      "nullable": false,
+      "type": "boolean"
+    },
+    "settled_at": {
+      "nullable": true,
+      "type": "timestamp with time zone"
+    },
+    "source_wallet_id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "status": {
+      "nullable": false,
+      "type": "USER-DEFINED"
+    },
+    "updated_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    }
+  },
+  "wallet": {
+    "created_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    },
+    "currency": {
+      "nullable": false,
+      "type": "character"
+    },
+    "customer_id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "is_deleted": {
+      "nullable": false,
+      "type": "boolean"
+    },
+    "status": {
+      "nullable": false,
+      "type": "USER-DEFINED"
+    },
+    "updated_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    }
+  },
+  "wallet_balance_history": {
+    "balance_after": {
+      "nullable": false,
+      "type": "numeric"
+    },
+    "id": {
+      "nullable": false,
+      "type": "bigint"
+    },
+    "is_deleted": {
+      "nullable": false,
+      "type": "boolean"
+    },
+    "recorded_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    },
+    "updated_at": {
+      "nullable": false,
+      "type": "timestamp with time zone"
+    },
+    "wallet_id": {
+      "nullable": false,
+      "type": "bigint"
+    }
+  }
+}

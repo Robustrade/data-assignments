@@ -1,0 +1,161 @@
+# catalog.yaml
+# Minimal dataset catalog for discoverability. In production this would be
+# published to a real catalog tool (DataHub, AWS Glue Catalog, Unity
+# Catalog) — this file captures the same information manually, scoped to
+# the datasets this assignment produces.
+
+datasets:
+
+  # ------------------------------------------------------------------
+  # LAKE — append-only change history, one JSON-lines file per source
+  # table. Full replay history; source of truth for time travel beyond
+  # what the warehouse's SCD2 tables retain.
+  # ------------------------------------------------------------------
+
+  - name: lake.customer
+    layer: lake
+    location: lake/customer.jsonl
+    format: json_lines
+    owner: data-platform-team
+    source_table: public.customer
+    update_cadence: on-demand (triggered by cdc_extract.py run; intended as scheduled/polling in production)
+    schema:
+      - {field: table, type: string, description: "source table name"}
+      - {field: op, type: string, description: "upsert | delete"}
+      - {field: pk, type: bigint, description: "primary key of source row"}
+      - {field: updated_at, type: timestamp, description: "source row's updated_at at capture time"}
+      - {field: captured_at, type: timestamp, description: "when this change record was written"}
+      - {field: data, type: object, description: "full row payload at time of capture"}
+    notes: >
+      Append-only. Never mutated or compacted in this assignment; a
+      production version would periodically compact/partition by date.
+
+  - name: lake.wallet
+    layer: lake
+    location: lake/wallet.jsonl
+    format: json_lines
+    owner: data-platform-team
+    source_table: public.wallet
+    update_cadence: on-demand (triggered by cdc_extract.py run)
+    notes: Same record shape as lake.customer (table/op/pk/updated_at/captured_at/data); includes wallet.status and is_deleted.
+
+  - name: lake.transfer
+    layer: lake
+    location: lake/transfer.jsonl
+    format: json_lines
+    owner: data-platform-team
+    source_table: public.transfer
+    update_cadence: on-demand (triggered by cdc_extract.py run)
+    notes: Same record shape as lake.customer; includes transfer.status, amount, settled_at.
+
+  - name: lake.wallet_balance_history
+    layer: lake
+    location: lake/wallet_balance_history.jsonl
+    format: json_lines
+    owner: data-platform-team
+    source_table: public.wallet_balance_history
+    update_cadence: on-demand (triggered by cdc_extract.py run)
+    notes: Weak entity; depends on wallet. Append-only balance snapshots.
+
+  - name: lake.payment_attempt
+    layer: lake
+    location: lake/payment_attempt.jsonl
+    format: json_lines
+    owner: data-platform-team
+    source_table: public.payment_attempt
+    update_cadence: on-demand (triggered by cdc_extract.py run)
+    notes: Weak entity; depends on transfer.
+
+  # ------------------------------------------------------------------
+  # WAREHOUSE — current-state snapshots (1 row per entity) + SCD2
+  # history for wallet/transfer. Loaded from the lake by
+  # warehouse_load.py, idempotently.
+  # ------------------------------------------------------------------
+
+  - name: warehouse.customer
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.customer
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.customer
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: current state, 1 row per customer.id
+    notes: Snapshot only — no history table for this entity in this assignment.
+
+  - name: warehouse.wallet
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.wallet
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.wallet
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: current state, 1 row per wallet.id
+
+  - name: warehouse.wallet_history
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.wallet_history
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.wallet
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: SCD2 — one row per (wallet.id, valid_from) state change
+    notes: >
+      Supports time travel: state as of any timestamp T is the row where
+      valid_from <= T AND (valid_to > T OR valid_to IS NULL). Limited by
+      polling-CDC granularity — see APPROACH.md for known gap on
+      intermediate-state loss between polls.
+
+  - name: warehouse.transfer
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.transfer
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.transfer
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: current state, 1 row per transfer.id
+
+  - name: warehouse.transfer_history
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.transfer_history
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.transfer
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: SCD2 — one row per (transfer.id, valid_from) state change
+
+  - name: warehouse.wallet_balance_history
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.wallet_balance_history
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.wallet_balance_history
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: current state, 1 row per wallet_balance_history.id (append-only by nature)
+
+  - name: warehouse.payment_attempt
+    layer: warehouse
+    location: postgres://wallet_db/warehouse.payment_attempt
+    format: postgres_table
+    owner: data-platform-team
+    loaded_from: lake.payment_attempt
+    update_cadence: on-demand (triggered by warehouse_load.py run)
+    grain: current state, 1 row per payment_attempt.id
+
+  # ------------------------------------------------------------------
+  # OPERATIONAL — supporting tables (checkpoints, load logs). Listed for
+  # completeness/discoverability, not treated as analytical datasets.
+  # ------------------------------------------------------------------
+
+  - name: public.cdc_checkpoint
+    layer: operational
+    location: postgres://wallet_db/public.cdc_checkpoint
+    format: postgres_table
+    owner: data-platform-team
+    notes: Tracks last-processed (updated_at, id) cursor per source table for the CDC extractor.
+
+  - name: warehouse.load_log
+    layer: operational
+    location: postgres://wallet_db/warehouse.load_log
+    format: postgres_table
+    owner: data-platform-team
+    notes: Tracks (table, pk, updated_at) already loaded into the warehouse, for idempotent replay.
