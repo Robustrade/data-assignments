@@ -1,0 +1,196 @@
+datasets:
+- name: lake.customers
+  layer: lake
+  path: lake/customers/dt=YYYY-MM-DD/changes.jsonl
+  format: JSONL, append-only, one row per change event
+  schema_ref: src/source_db.py::SCHEMA_SQL
+  owner: data-platform-team
+  intended_consumers:
+  - data engineers
+  - downstream lake consumers
+  - audit/replay tooling
+  update_cadence: near real-time (per CDC extraction cycle)
+  primary_key: null
+  notes: Full change history. Never updated or deleted in place.
+- name: warehouse.customers_current
+  layer: warehouse
+  path: data/warehouse.duckdb::customers_current
+  format: DuckDB table, latest snapshot
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics
+  - BI dashboards
+  - product teams
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: pk_key (composite business key)
+  notes: One row per current business entity.
+- name: warehouse.customers_history
+  layer: warehouse
+  path: data/warehouse.duckdb::customers_history
+  format: DuckDB table, SCD2 versioned history
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics (time travel)
+  - compliance/audit
+  - incident investigation
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: version_id
+  notes: Enables point-in-time reconstruction via valid_from/valid_to/is_current.
+- name: lake.wallets
+  layer: lake
+  path: lake/wallets/dt=YYYY-MM-DD/changes.jsonl
+  format: JSONL, append-only, one row per change event
+  schema_ref: src/source_db.py::SCHEMA_SQL
+  owner: data-platform-team
+  intended_consumers:
+  - data engineers
+  - downstream lake consumers
+  - audit/replay tooling
+  update_cadence: near real-time (per CDC extraction cycle)
+  primary_key: null
+  notes: Full change history. Never updated or deleted in place.
+- name: warehouse.wallets_current
+  layer: warehouse
+  path: data/warehouse.duckdb::wallets_current
+  format: DuckDB table, latest snapshot
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics
+  - BI dashboards
+  - product teams
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: pk_key (composite business key)
+  notes: One row per current business entity.
+- name: warehouse.wallets_history
+  layer: warehouse
+  path: data/warehouse.duckdb::wallets_history
+  format: DuckDB table, SCD2 versioned history
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics (time travel)
+  - compliance/audit
+  - incident investigation
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: version_id
+  notes: Enables point-in-time reconstruction via valid_from/valid_to/is_current.
+- name: lake.transactions
+  layer: lake
+  path: lake/transactions/dt=YYYY-MM-DD/changes.jsonl
+  format: JSONL, append-only, one row per change event
+  schema_ref: src/source_db.py::SCHEMA_SQL
+  owner: data-platform-team
+  intended_consumers:
+  - data engineers
+  - downstream lake consumers
+  - audit/replay tooling
+  update_cadence: near real-time (per CDC extraction cycle)
+  primary_key: null
+  notes: Full change history. Never updated or deleted in place.
+- name: warehouse.transactions_current
+  layer: warehouse
+  path: data/warehouse.duckdb::transactions_current
+  format: DuckDB table, latest snapshot
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics
+  - BI dashboards
+  - product teams
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: pk_key (composite business key)
+  notes: One row per current business entity.
+- name: warehouse.transactions_history
+  layer: warehouse
+  path: data/warehouse.duckdb::transactions_history
+  format: DuckDB table, SCD2 versioned history
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics (time travel)
+  - compliance/audit
+  - incident investigation
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: version_id
+  notes: Enables point-in-time reconstruction via valid_from/valid_to/is_current.
+- name: lake.transaction_line_items
+  layer: lake
+  path: lake/transaction_line_items/dt=YYYY-MM-DD/changes.jsonl
+  format: JSONL, append-only, one row per change event
+  schema_ref: src/source_db.py::SCHEMA_SQL
+  owner: data-platform-team
+  intended_consumers:
+  - data engineers
+  - downstream lake consumers
+  - audit/replay tooling
+  update_cadence: near real-time (per CDC extraction cycle)
+  primary_key: null
+  notes: Full change history. Never updated or deleted in place.
+- name: warehouse.transaction_line_items_current
+  layer: warehouse
+  path: data/warehouse.duckdb::transaction_line_items_current
+  format: DuckDB table, latest snapshot
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics
+  - BI dashboards
+  - product teams
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: pk_key (composite business key)
+  notes: One row per current business entity.
+- name: warehouse.transaction_line_items_history
+  layer: warehouse
+  path: data/warehouse.duckdb::transaction_line_items_history
+  format: DuckDB table, SCD2 versioned history
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics (time travel)
+  - compliance/audit
+  - incident investigation
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: version_id
+  notes: Enables point-in-time reconstruction via valid_from/valid_to/is_current.
+- name: lake.balance_history
+  layer: lake
+  path: lake/balance_history/dt=YYYY-MM-DD/changes.jsonl
+  format: JSONL, append-only, one row per change event
+  schema_ref: src/source_db.py::SCHEMA_SQL
+  owner: data-platform-team
+  intended_consumers:
+  - data engineers
+  - downstream lake consumers
+  - audit/replay tooling
+  update_cadence: near real-time (per CDC extraction cycle)
+  primary_key: null
+  notes: Full change history. Never updated or deleted in place.
+- name: warehouse.balance_history_current
+  layer: warehouse
+  path: data/warehouse.duckdb::balance_history_current
+  format: DuckDB table, latest snapshot
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics
+  - BI dashboards
+  - product teams
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: pk_key (composite business key)
+  notes: One row per current business entity.
+- name: warehouse.balance_history_history
+  layer: warehouse
+  path: data/warehouse.duckdb::balance_history_history
+  format: DuckDB table, SCD2 versioned history
+  schema_ref: src/warehouse_loader.py
+  owner: data-platform-team
+  intended_consumers:
+  - analytics (time travel)
+  - compliance/audit
+  - incident investigation
+  update_cadence: near real-time (per warehouse load cycle)
+  primary_key: version_id
+  notes: Enables point-in-time reconstruction via valid_from/valid_to/is_current.
