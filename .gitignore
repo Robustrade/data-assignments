@@ -1,0 +1,6 @@
+data/
+checkpoints/
+lake/
+__pycache__/
+*.pyc
+.pytest_cache/
