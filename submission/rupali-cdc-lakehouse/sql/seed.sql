@@ -1,0 +1,210 @@
+PRAGMA foreign_keys = ON;
+
+INSERT INTO customers (
+    customer_id,
+    first_name,
+    last_name,
+    email,
+    phone,
+    status,
+    created_at,
+    updated_at
+)
+VALUES
+(
+    1,
+    'Riya',
+    'Sharma',
+    'riya.sharma@example.com',
+    '9876543210',
+    'ACTIVE',
+    '2026-08-01T09:00:00',
+    '2026-08-01T09:00:00'
+),
+(
+    2,
+    'Amit',
+    'Patil',
+    'amit.patil@example.com',
+    '9876543211',
+    'ACTIVE',
+    '2026-08-01T09:05:00',
+    '2026-08-01T09:05:00'
+),
+(
+    3,
+    'Sneha',
+    'Joshi',
+    'sneha.joshi@example.com',
+    '9876543212',
+    'ACTIVE',
+    '2026-08-01T09:10:00',
+    '2026-08-01T09:10:00'
+);
+
+INSERT INTO products (
+    product_id,
+    product_name,
+    category,
+    price,
+    status,
+    created_at,
+    updated_at
+)
+VALUES
+(
+    101,
+    'Laptop',
+    'Electronics',
+    75000.00,
+    'ACTIVE',
+    '2026-08-01T10:00:00',
+    '2026-08-01T10:00:00'
+),
+(
+    102,
+    'Wireless Mouse',
+    'Electronics',
+    1200.00,
+    'ACTIVE',
+    '2026-08-01T10:05:00',
+    '2026-08-01T10:05:00'
+),
+(
+    103,
+    'Office Chair',
+    'Furniture',
+    8500.00,
+    'ACTIVE',
+    '2026-08-01T10:10:00',
+    '2026-08-01T10:10:00'
+),
+(
+    104,
+    'Keyboard',
+    'Electronics',
+    2500.00,
+    'ACTIVE',
+    '2026-08-01T10:15:00',
+    '2026-08-01T10:15:00'
+);
+
+INSERT INTO orders (
+    order_id,
+    customer_id,
+    order_status,
+    order_total,
+    order_date,
+    created_at,
+    updated_at
+)
+VALUES
+(
+    1001,
+    1,
+    'CONFIRMED',
+    76200.00,
+    '2026-08-02',
+    '2026-08-02T10:00:00',
+    '2026-08-02T10:00:00'
+),
+(
+    1002,
+    2,
+    'SHIPPED',
+    8500.00,
+    '2026-08-02',
+    '2026-08-02T11:00:00',
+    '2026-08-02T11:00:00'
+),
+(
+    1003,
+    3,
+    'PENDING',
+    3700.00,
+    '2026-08-03',
+    '2026-08-03T09:30:00',
+    '2026-08-03T09:30:00'
+);
+
+INSERT INTO order_items (
+    order_item_id,
+    order_id,
+    product_id,
+    quantity,
+    unit_price
+)
+VALUES
+(
+    1,
+    1001,
+    101,
+    1,
+    75000.00
+),
+(
+    2,
+    1001,
+    102,
+    1,
+    1200.00
+),
+(
+    3,
+    1002,
+    103,
+    1,
+    8500.00
+),
+(
+    4,
+    1003,
+    102,
+    1,
+    1200.00
+),
+(
+    5,
+    1003,
+    104,
+    1,
+    2500.00
+);
+
+INSERT INTO payments (
+    payment_id,
+    order_id,
+    payment_method,
+    payment_status,
+    amount,
+    transaction_reference,
+    paid_at
+)
+VALUES
+(
+    5001,
+    1001,
+    'UPI',
+    'SUCCESS',
+    76200.00,
+    'TXN-1001',
+    '2026-08-02T10:05:00'
+),
+(
+    5002,
+    1002,
+    'CARD',
+    'SUCCESS',
+    8500.00,
+    'TXN-1002',
+    '2026-08-02T11:05:00'
+),
+(
+    5003,
+    1003,
+    'UPI',
+    'PENDING',
+    3700.00,
+    'TXN-1003',
+    NULL
+);

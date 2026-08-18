@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Pytest cache
+.pytest_cache/
+
+# SQLite database generated locally
+data/*.db
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+
+# Python distribution/build files
+*.egg-info/
+dist/
+build/
