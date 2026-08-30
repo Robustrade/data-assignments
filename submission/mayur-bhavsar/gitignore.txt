@@ -1,0 +1,17 @@
+# Runtime workspace: source database, lake files, warehouse, state, metrics.
+# Everything here is reproducible with `make demo`.
+.work/
+
+# dbt
+target/
+.user.yml
+ci_warehouse.duckdb
+dbt_packages/
+logs/
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,39 @@
+name: cdclake_warehouse
+version: "1.0.0"
+config-version: 2
+profile: cdclake
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+# Deliberately not "tests": that directory holds the pytest suite. Keeping the
+# two test systems in separate trees stops either from trying to parse the
+# other's files.
+test-paths: ["dbt_tests"]
+seed-paths: ["dbt_seeds"]
+snapshot-paths: ["dbt_snapshots"]
+analysis-paths: ["dbt_analyses"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Rebuilds the lake relation before every invocation, and — only for a bare
+# `dbt test` — materialises the models first. See macros/bootstrap.sql.
+on-run-start:
+  - "{{ bootstrap_warehouse() }}"
+
+models:
+  cdclake_warehouse:
+    staging:
+      +materialized: table
+    history:
+      # Tables, not views: history is read repeatedly by every current-state
+      # view and by point-in-time queries, and the window functions are the
+      # expensive part.
+      +materialized: table
+    current:
+      # Views: they are a thin filter over history and must never be able to
+      # disagree with it.
+      +materialized: view
+    marts:
+      +materialized: view

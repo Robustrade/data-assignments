@@ -1,0 +1,79 @@
+{
+  "table": "customer_order",
+  "contract_version": 1,
+  "owner": "commerce-platform",
+  "description": "Strong entity. The order header. Highest-value table: status walks PENDING -> PAID -> SHIPPED -> DELIVERED, or CANCELLED from PENDING/PAID.",
+  "primary_key": [
+    "order_id"
+  ],
+  "columns": [
+    {
+      "name": "order_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "customer_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "status",
+      "type": "TEXT",
+      "nullable": false,
+      "enum": [
+        "PENDING",
+        "PAID",
+        "SHIPPED",
+        "DELIVERED",
+        "CANCELLED"
+      ]
+    },
+    {
+      "name": "currency",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "total_amount",
+      "type": "DECIMAL(12, 2)",
+      "nullable": false
+    },
+    {
+      "name": "placed_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "cancelled_at",
+      "type": "TEXT",
+      "nullable": true
+    },
+    {
+      "name": "created_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "updated_at",
+      "type": "TEXT",
+      "nullable": false
+    }
+  ],
+  "foreign_keys": [
+    {
+      "columns": [
+        "customer_id"
+      ],
+      "references_table": "customer",
+      "references_columns": [
+        "customer_id"
+      ]
+    }
+  ],
+  "unique_constraints": [],
+  "indexes": [
+    "idx_customer_order_customer_placed",
+    "idx_customer_order_updated"
+  ]
+}

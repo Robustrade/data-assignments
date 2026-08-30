@@ -1,0 +1,17 @@
+# sqlfluff is pointed at the hand-written source DDL, which is the SQL in this
+# repository that no other tool checks. The dbt SQL under models/, macros/ and
+# dbt_tests/ is excluded via .sqlfluffignore: it is Jinja that only expands
+# against this project's own macros, so a standalone linter cannot parse it —
+# and `dbt parse` in CI already validates it properly.
+#
+# Two dialects would be needed to cover everything (sqlite for the source,
+# duckdb for the warehouse). One config file holds one dialect, so it is set to
+# the one being linted.
+[sqlfluff]
+dialect = sqlite
+templater = raw
+max_line_length = 100
+
+[sqlfluff:indentation]
+indented_joins = false
+indented_using_on = true

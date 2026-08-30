@@ -1,0 +1,83 @@
+{
+  "table": "payment",
+  "contract_version": 1,
+  "owner": "commerce-platform",
+  "description": "Payment against an order. Never cascade-deleted with the order, because financial records must survive an order erasure.",
+  "primary_key": [
+    "payment_id"
+  ],
+  "columns": [
+    {
+      "name": "payment_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "order_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "method",
+      "type": "TEXT",
+      "nullable": false,
+      "enum": [
+        "CARD",
+        "BANK_TRANSFER",
+        "WALLET"
+      ]
+    },
+    {
+      "name": "amount",
+      "type": "DECIMAL(12, 2)",
+      "nullable": false
+    },
+    {
+      "name": "currency",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "status",
+      "type": "TEXT",
+      "nullable": false,
+      "enum": [
+        "INITIATED",
+        "SETTLED",
+        "FAILED",
+        "REFUNDED"
+      ]
+    },
+    {
+      "name": "created_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "settled_at",
+      "type": "TEXT",
+      "nullable": true
+    },
+    {
+      "name": "updated_at",
+      "type": "TEXT",
+      "nullable": false
+    }
+  ],
+  "foreign_keys": [
+    {
+      "columns": [
+        "order_id"
+      ],
+      "references_table": "customer_order",
+      "references_columns": [
+        "order_id"
+      ]
+    }
+  ],
+  "unique_constraints": [],
+  "indexes": [
+    "idx_payment_order",
+    "idx_payment_status_created"
+  ]
+}

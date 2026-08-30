@@ -1,0 +1,265 @@
+version: 2
+
+# ---------------------------------------------------------------------------
+# Validation parity.
+#
+# Every not_null / unique / accepted_values / relationships assertion below is
+# the downstream twin of a constraint in sql/001_source_schema.sql, as
+# published in contracts/*.json.
+#
+# The pairing is not a matter of trust: tests/test_validation_parity.py reads
+# this file and the contracts and fails if any non-nullable column, unique
+# constraint, enum domain or foreign key is missing an assertion here. Adding a
+# CHECK ... IN (...) to the source and republishing the contract will break the
+# build until the corresponding accepted_values test is added.
+# ---------------------------------------------------------------------------
+
+models:
+  # ── staging ─────────────────────────────────────────────────────────────
+  - name: stg_cdc_events
+    description: Typed, deduplicated change log. The only reader of the lake.
+    columns:
+      - name: event_key
+        description: table_name:event_id — unique after duplicate absorption.
+        data_tests: [not_null, unique]
+      - name: event_id
+        data_tests: [not_null]
+      - name: table_name
+        data_tests: [not_null]
+      - name: op
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["I", "U", "D"]
+      - name: pk_hash
+        data_tests: [not_null]
+      - name: committed_at
+        data_tests: [not_null]
+
+  # ── history (SCD2) ──────────────────────────────────────────────────────
+  - name: dim_customer_history
+    description: Full version history of customer, one row per change.
+    columns: &history_columns
+      - name: scd_key
+        description: pk_hash:_version — the natural key of a version row.
+        data_tests: [not_null, unique]
+      - name: pk_hash
+        data_tests: [not_null]
+      - name: _version
+        data_tests: [not_null]
+      - name: valid_from
+        data_tests: [not_null]
+
+  - name: dim_product_history
+    description: Full version history of product.
+    columns: *history_columns
+
+  - name: dim_customer_order_history
+    description: Full version history of customer_order.
+    columns: *history_columns
+
+  - name: dim_order_item_history
+    description: Full version history of order_item.
+    columns: *history_columns
+
+  - name: dim_payment_history
+    description: Full version history of payment.
+    columns: *history_columns
+
+  - name: dim_payment_attempt_history
+    description: Full version history of payment_attempt.
+    columns: *history_columns
+
+  # ── current state ───────────────────────────────────────────────────────
+  - name: customer_current
+    description: Latest snapshot of customer. Deleted customers are excluded.
+    columns:
+      - name: pk_hash
+        data_tests: [not_null, unique]
+      - name: customer_id
+        data_tests: [not_null, unique]
+      - name: email
+        description: UNIQUE in the source; asserted unique here too.
+        data_tests: [not_null, unique]
+      - name: full_name
+        data_tests: [not_null]
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ACTIVE", "SUSPENDED", "CLOSED"]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: product_current
+    description: Latest snapshot of product.
+    columns:
+      - name: pk_hash
+        data_tests: [not_null, unique]
+      - name: product_id
+        data_tests: [not_null, unique]
+      - name: sku
+        description: UNIQUE in the source.
+        data_tests: [not_null, unique]
+      - name: name
+        data_tests: [not_null]
+      - name: unit_price
+        data_tests: [not_null]
+      - name: currency
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: customer_order_current
+    description: Latest snapshot of the order header.
+    columns:
+      - name: pk_hash
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('customer_current')
+                field: customer_id
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED"]
+      - name: currency
+        data_tests: [not_null]
+      - name: total_amount
+        data_tests: [not_null]
+      - name: placed_at
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: order_item_current
+    description: Latest snapshot of order lines. Identity is (order_id, line_no).
+    columns:
+      - name: pk_hash
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('customer_order_current')
+                field: order_id
+      - name: line_no
+        data_tests: [not_null]
+      - name: product_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('product_current')
+                field: product_id
+      - name: quantity
+        data_tests: [not_null]
+      - name: unit_price
+        data_tests: [not_null]
+      - name: extended_amount
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: payment_current
+    description: Latest snapshot of payments.
+    columns:
+      - name: pk_hash
+        data_tests: [not_null, unique]
+      - name: payment_id
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('customer_order_current')
+                field: order_id
+      - name: method
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["CARD", "BANK_TRANSFER", "WALLET"]
+      - name: amount
+        data_tests: [not_null]
+      - name: currency
+        data_tests: [not_null]
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["INITIATED", "SETTLED", "FAILED", "REFUNDED"]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  - name: payment_attempt_current
+    description: >
+      Latest snapshot of gateway attempts. Identity is
+      (payment_id, attempt_no).
+    columns:
+      - name: pk_hash
+        data_tests: [not_null, unique]
+      - name: payment_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('payment_current')
+                field: payment_id
+      - name: attempt_no
+        data_tests: [not_null]
+      - name: result
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["SUCCESS", "DECLINED", "ERROR", "TIMEOUT"]
+      - name: attempted_at
+        data_tests: [not_null]
+      - name: created_at
+        data_tests: [not_null]
+      - name: updated_at
+        data_tests: [not_null]
+
+  # ── marts ───────────────────────────────────────────────────────────────
+  - name: mart_order_financials
+    description: >
+      Order-level rollup joining the order header to its line items, its
+      settled payments and its customer. Exists so cross-entity business
+      rules can be asserted as tests.
+    columns:
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: email
+        description: >
+          Not null proves referential integrity end to end - a left join that
+          found no customer would surface here as a NULL.
+        data_tests: [not_null]
+      - name: total_amount
+        data_tests: [not_null]
+      - name: line_item_total
+        data_tests: [not_null]
+      - name: settled_amount
+        data_tests: [not_null]

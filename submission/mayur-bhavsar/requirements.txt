@@ -1,0 +1,8 @@
+# Runtime + validation dependencies for the CDC lakehouse submission.
+# Deliberately small: the source database is stdlib sqlite3, the lake is
+# newline-delimited JSON on the local filesystem, and the warehouse is DuckDB.
+duckdb>=1.0.0
+dbt-core>=1.10.0
+dbt-duckdb>=1.9.0
+PyYAML>=6.0
+pytest>=7.4

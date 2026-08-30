@@ -1,0 +1,45 @@
+version: 2
+
+sources:
+  - name: lake
+    description: >
+      Append-only CDC change log. One row per source change, never updated,
+      never deleted. The physical relation is materialised from the lake's
+      newline-delimited JSON files by the on-run-start hook; the files
+      themselves are the system of record.
+    schema: main
+    meta:
+      layer: lake
+      owner: data-platform
+      update_cadence: continuous micro-batch
+      storage: newline-delimited JSON, partitioned by table_name / ingest_date
+    tables:
+      - name: cdc_events
+        identifier: lake_cdc_events
+        description: >
+          Every insert, update and delete captured from the source system.
+          pk / before / after are JSON text so that the lake schema is stable
+          under source schema change.
+        columns:
+          - name: event_id
+            description: Source change sequence. Monotonic; the replay offset.
+          - name: table_name
+            description: Source table the change belongs to.
+          - name: op
+            description: I, U or D.
+          - name: pk
+            description: Canonical JSON of the primary key columns.
+          - name: pk_hash
+            description: Stable 16-hex-char hash of pk; the merge key.
+          - name: before
+            description: Full row image before the change; null for inserts.
+          - name: after
+            description: Full row image after the change; null for deletes.
+          - name: committed_at
+            description: When the source committed the change (UTC).
+          - name: ingested_at
+            description: When the batch landed in the lake (UTC).
+          - name: batch_id
+            description: Ingestion batch that wrote this record.
+          - name: contract_version
+            description: Contract version in force when the record was ingested.

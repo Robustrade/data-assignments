@@ -1,0 +1,301 @@
+# ---------------------------------------------------------------------------
+# Dataset catalog.
+#
+# Production analogue: a Unity Catalog / Glue / DataHub registry. The point of
+# keeping it here as a file is that it is *validated* — scripts/validate_catalog.py
+# checks every entry against the physical datasets and fails the build when the
+# two disagree. A catalog nobody verifies is documentation, not metadata.
+#
+# `columns_from_contract` avoids restating the entity columns that
+# contracts/<table>.json already publishes; the validator expands the reference.
+# ---------------------------------------------------------------------------
+version: 1
+catalog: cdclake
+
+owners:
+  data-platform:
+    contact: data-platform@example.com
+    on_call: "#data-platform"
+  commerce-analytics:
+    contact: analytics@example.com
+    on_call: "#commerce-analytics"
+
+# Columns every SCD2 history model carries in addition to its entity columns.
+column_groups:
+  scd2_metadata:
+    - pk_hash
+    - scd_key
+    - primary_key_json
+    - _op
+    - _version
+    - valid_from
+    - valid_to
+    - is_current
+    - is_deleted
+    - _ingested_at
+    - _batch_id
+  current_metadata:
+    - pk_hash
+    - _version
+    - valid_from
+
+datasets:
+  # ── lake ────────────────────────────────────────────────────────────────
+  - name: lake.cdc_events
+    layer: lake
+    owner: data-platform
+    description: >
+      Append-only record of every insert, update and delete captured from the
+      commerce source system. Immutable: files are written once and never
+      rewritten. This is the durable history from which every warehouse model
+      is derived, and the only thing that must be backed up.
+    intended_consumers:
+      - the warehouse build (sole routine consumer)
+      - platform engineers performing replay, audit or incident forensics
+    not_intended_for: >
+      Analytics. It is a change log, not a snapshot; querying it directly for
+      current state will double-count updated rows.
+    update_cadence: continuous micro-batch (seconds)
+    storage: newline-delimited JSON, partitioned by table_name / ingest_date
+    location: "<workspace>/lake/cdc_events/table_name=*/ingest_date=*/batch_*.ndjson"
+    access: >
+      duckdb -c "select * from read_json('<workspace>/lake/cdc_events/**/*.ndjson',
+      format='newline_delimited')"
+    contains_pii: true
+    pii_notes: >
+      before/after images carry customer email, name and phone. Retention and
+      erasure obligations apply to the lake, not only to the warehouse.
+    lineage: [source.commerce (via cdc_events triggers)]
+    columns:
+      - event_id
+      - table_name
+      - op
+      - pk
+      - pk_hash
+      - before
+      - after
+      - committed_at
+      - ingested_at
+      - batch_id
+      - contract_version
+
+  # ── warehouse: staging ──────────────────────────────────────────────────
+  - name: warehouse.stg_cdc_events
+    layer: warehouse
+    owner: data-platform
+    description: >
+      Typed, deduplicated view of the lake. Absorbs at-least-once duplicates on
+      (table_name, event_id) and parses timestamps once.
+    intended_consumers: [warehouse models only]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.stg_cdc_events
+    contains_pii: true
+    lineage: [lake.cdc_events]
+    columns:
+      - event_id
+      - table_name
+      - event_key
+      - op
+      - pk
+      - pk_hash
+      - before
+      - after
+      - committed_at
+      - ingested_at
+      - batch_id
+      - contract_version
+
+  # ── warehouse: SCD2 history ─────────────────────────────────────────────
+  - name: warehouse.dim_customer_history
+    layer: warehouse
+    owner: data-platform
+    description: Every version of every customer, with validity intervals.
+    intended_consumers: [point-in-time restore, audit, slowly-changing analysis]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.dim_customer_history
+    contains_pii: true
+    lineage: [warehouse.stg_cdc_events]
+    columns_from_contract: customer
+    column_group: scd2_metadata
+
+  - name: warehouse.dim_product_history
+    layer: warehouse
+    owner: data-platform
+    description: Every version of every product, including price history.
+    intended_consumers: [price-change analysis, point-in-time restore]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.dim_product_history
+    contains_pii: false
+    lineage: [warehouse.stg_cdc_events]
+    columns_from_contract: product
+    column_group: scd2_metadata
+
+  - name: warehouse.dim_customer_order_history
+    layer: warehouse
+    owner: data-platform
+    description: >
+      Every version of every order. The status transitions live here, which is
+      what makes transition validation possible at all.
+    intended_consumers: [order lifecycle analysis, restore, audit]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.dim_customer_order_history
+    contains_pii: false
+    lineage: [warehouse.stg_cdc_events]
+    columns_from_contract: customer_order
+    column_group: scd2_metadata
+
+  - name: warehouse.dim_order_item_history
+    layer: warehouse
+    owner: data-platform
+    description: Every version of every order line (weak entity).
+    intended_consumers: [restore, audit]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.dim_order_item_history
+    contains_pii: false
+    lineage: [warehouse.stg_cdc_events]
+    columns_from_contract: order_item
+    column_group: scd2_metadata
+
+  - name: warehouse.dim_payment_history
+    layer: warehouse
+    owner: data-platform
+    description: Every version of every payment, including settlement.
+    intended_consumers: [finance reconciliation, restore, audit]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.dim_payment_history
+    contains_pii: false
+    lineage: [warehouse.stg_cdc_events]
+    columns_from_contract: payment
+    column_group: scd2_metadata
+
+  - name: warehouse.dim_payment_attempt_history
+    layer: warehouse
+    owner: data-platform
+    description: Every version of every gateway attempt (weak entity).
+    intended_consumers: [payment reliability analysis, restore, audit]
+    update_cadence: every warehouse build
+    storage: DuckDB table
+    location: main.dim_payment_attempt_history
+    contains_pii: false
+    lineage: [warehouse.stg_cdc_events]
+    columns_from_contract: payment_attempt
+    column_group: scd2_metadata
+
+  # ── warehouse: current state ────────────────────────────────────────────
+  - name: warehouse.customer_current
+    layer: warehouse
+    owner: commerce-analytics
+    description: Latest state of each customer. Deleted customers are excluded.
+    intended_consumers: [analysts, BI tools, downstream services]
+    update_cadence: every warehouse build
+    storage: DuckDB view over dim_customer_history
+    location: main.customer_current
+    contains_pii: true
+    lineage: [warehouse.dim_customer_history]
+    columns_from_contract: customer
+    column_group: current_metadata
+
+  - name: warehouse.product_current
+    layer: warehouse
+    owner: commerce-analytics
+    description: Latest state of each product.
+    intended_consumers: [analysts, BI tools]
+    update_cadence: every warehouse build
+    storage: DuckDB view over dim_product_history
+    location: main.product_current
+    contains_pii: false
+    lineage: [warehouse.dim_product_history]
+    columns_from_contract: product
+    column_group: current_metadata
+
+  - name: warehouse.customer_order_current
+    layer: warehouse
+    owner: commerce-analytics
+    description: Latest state of each order header.
+    intended_consumers: [analysts, BI tools, downstream services]
+    update_cadence: every warehouse build
+    storage: DuckDB view over dim_customer_order_history
+    location: main.customer_order_current
+    contains_pii: false
+    lineage: [warehouse.dim_customer_order_history]
+    columns_from_contract: customer_order
+    column_group: current_metadata
+
+  - name: warehouse.order_item_current
+    layer: warehouse
+    owner: commerce-analytics
+    description: Latest state of each order line.
+    intended_consumers: [analysts, BI tools]
+    update_cadence: every warehouse build
+    storage: DuckDB view over dim_order_item_history
+    location: main.order_item_current
+    contains_pii: false
+    lineage: [warehouse.dim_order_item_history]
+    columns_from_contract: order_item
+    column_group: current_metadata
+
+  - name: warehouse.payment_current
+    layer: warehouse
+    owner: commerce-analytics
+    description: Latest state of each payment.
+    intended_consumers: [finance, analysts]
+    update_cadence: every warehouse build
+    storage: DuckDB view over dim_payment_history
+    location: main.payment_current
+    contains_pii: false
+    lineage: [warehouse.dim_payment_history]
+    columns_from_contract: payment
+    column_group: current_metadata
+
+  - name: warehouse.payment_attempt_current
+    layer: warehouse
+    owner: commerce-analytics
+    description: Latest state of each gateway attempt.
+    intended_consumers: [payment reliability analysis]
+    update_cadence: every warehouse build
+    storage: DuckDB view over dim_payment_attempt_history
+    location: main.payment_attempt_current
+    contains_pii: false
+    lineage: [warehouse.dim_payment_attempt_history]
+    columns_from_contract: payment_attempt
+    column_group: current_metadata
+
+  # ── warehouse: marts ────────────────────────────────────────────────────
+  - name: warehouse.mart_order_financials
+    layer: warehouse
+    owner: commerce-analytics
+    description: >
+      Order-level financial rollup: header total against summed line items and
+      settled payments. The default starting point for order analytics, and the
+      relation the cross-entity business assertions are written against.
+    intended_consumers: [finance, analysts, BI tools]
+    update_cadence: every warehouse build
+    storage: DuckDB view
+    location: main.mart_order_financials
+    contains_pii: true
+    pii_notes: exposes customer email alongside order value.
+    lineage:
+      - warehouse.customer_order_current
+      - warehouse.order_item_current
+      - warehouse.payment_current
+      - warehouse.customer_current
+    columns:
+      - order_id
+      - customer_id
+      - email
+      - customer_status
+      - order_status
+      - currency
+      - total_amount
+      - placed_at
+      - cancelled_at
+      - line_item_total
+      - line_count
+      - settled_amount
+      - outstanding_amount
