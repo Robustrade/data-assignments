@@ -1,0 +1,13 @@
+# Kept inside the project directory so that `cd <project> && dbt test` works
+# with no DBT_PROFILES_DIR and no ~/.dbt setup — which is exactly what CI does.
+cdclake:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # The pipeline overrides this so each workspace (and each test) gets its
+      # own database file. The default has to sit in a directory that exists on
+      # a fresh checkout: DuckDB will create the file but not its parent, so a
+      # path under .work/ fails the CI `dbt test` job before it starts.
+      path: "{{ env_var('CDCLAKE_WAREHOUSE_DB', 'ci_warehouse.duckdb') }}"
+      threads: 4

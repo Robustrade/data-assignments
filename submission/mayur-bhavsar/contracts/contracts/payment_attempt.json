@@ -1,0 +1,68 @@
+{
+  "table": "payment_attempt",
+  "contract_version": 1,
+  "owner": "commerce-platform",
+  "description": "Weak entity. One gateway call for a payment. Highest-churn table in the domain; retries make CDC volume realistic.",
+  "primary_key": [
+    "payment_id",
+    "attempt_no"
+  ],
+  "columns": [
+    {
+      "name": "payment_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "attempt_no",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "result",
+      "type": "TEXT",
+      "nullable": false,
+      "enum": [
+        "SUCCESS",
+        "DECLINED",
+        "ERROR",
+        "TIMEOUT"
+      ]
+    },
+    {
+      "name": "failure_code",
+      "type": "TEXT",
+      "nullable": true
+    },
+    {
+      "name": "attempted_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "created_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "updated_at",
+      "type": "TEXT",
+      "nullable": false
+    }
+  ],
+  "foreign_keys": [
+    {
+      "columns": [
+        "payment_id"
+      ],
+      "references_table": "payment",
+      "references_columns": [
+        "payment_id"
+      ]
+    }
+  ],
+  "unique_constraints": [],
+  "indexes": [
+    "idx_payment_attempt_result"
+  ]
+}

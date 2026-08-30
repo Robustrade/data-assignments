@@ -1,0 +1,44 @@
+[project]
+name = "cdclake"
+version = "1.0.0"
+description = "CDC lakehouse reliability assignment — source, lake, warehouse, catalog"
+requires-python = ">=3.11"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+extend-exclude = '''
+/(
+    \.venv
+  | \.work
+  | target
+  | logs
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = [".venv", ".work", "target", "logs"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplify
+]
+[tool.ruff.lint.per-file-ignores]
+# Tests assert on private-ish warehouse columns and shadow names freely.
+"tests/*" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    # dbt-core pulls in libraries that emit these on import; they are not ours
+    # to fix and hiding them keeps a real warning visible.
+    "ignore::DeprecationWarning",
+]

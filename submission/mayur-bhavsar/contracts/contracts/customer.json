@@ -1,0 +1,58 @@
+{
+  "table": "customer",
+  "contract_version": 1,
+  "owner": "commerce-platform",
+  "description": "Strong entity. A person who can place orders. Changes are low volume: profile edits and status transitions.",
+  "primary_key": [
+    "customer_id"
+  ],
+  "columns": [
+    {
+      "name": "customer_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "email",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "full_name",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "status",
+      "type": "TEXT",
+      "nullable": false,
+      "enum": [
+        "ACTIVE",
+        "SUSPENDED",
+        "CLOSED"
+      ]
+    },
+    {
+      "name": "phone",
+      "type": "TEXT",
+      "nullable": true
+    },
+    {
+      "name": "created_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "updated_at",
+      "type": "TEXT",
+      "nullable": false
+    }
+  ],
+  "foreign_keys": [],
+  "unique_constraints": [
+    [
+      "email"
+    ]
+  ],
+  "indexes": []
+}

@@ -1,0 +1,58 @@
+{
+  "table": "product",
+  "contract_version": 1,
+  "owner": "commerce-platform",
+  "description": "Strong entity. Sellable item. Price edits are the interesting change pattern; they must never retroactively alter historical order lines.",
+  "primary_key": [
+    "product_id"
+  ],
+  "columns": [
+    {
+      "name": "product_id",
+      "type": "INTEGER",
+      "nullable": false
+    },
+    {
+      "name": "sku",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "name",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "unit_price",
+      "type": "DECIMAL(12, 2)",
+      "nullable": false
+    },
+    {
+      "name": "currency",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "discontinued_at",
+      "type": "TEXT",
+      "nullable": true
+    },
+    {
+      "name": "created_at",
+      "type": "TEXT",
+      "nullable": false
+    },
+    {
+      "name": "updated_at",
+      "type": "TEXT",
+      "nullable": false
+    }
+  ],
+  "foreign_keys": [],
+  "unique_constraints": [
+    [
+      "sku"
+    ]
+  ],
+  "indexes": []
+}
