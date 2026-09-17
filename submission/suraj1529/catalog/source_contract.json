@@ -1,0 +1,44 @@
+{
+  "customers": [
+    {"name":"customer_id","type":"INTEGER","notnull":false,"pk":1},
+    {"name":"email","type":"TEXT","notnull":true,"pk":0},
+    {"name":"full_name","type":"TEXT","notnull":true,"pk":0},
+    {"name":"status","type":"TEXT","notnull":true,"pk":0},
+    {"name":"created_at","type":"TEXT","notnull":true,"pk":0},
+    {"name":"updated_at","type":"TEXT","notnull":true,"pk":0}
+  ],
+  "products": [
+    {"name":"product_id","type":"INTEGER","notnull":false,"pk":1},
+    {"name":"sku","type":"TEXT","notnull":true,"pk":0},
+    {"name":"name","type":"TEXT","notnull":true,"pk":0},
+    {"name":"unit_price","type":"NUMERIC","notnull":true,"pk":0},
+    {"name":"currency","type":"TEXT","notnull":true,"pk":0},
+    {"name":"status","type":"TEXT","notnull":true,"pk":0},
+    {"name":"created_at","type":"TEXT","notnull":true,"pk":0},
+    {"name":"updated_at","type":"TEXT","notnull":true,"pk":0}
+  ],
+  "orders": [
+    {"name":"order_id","type":"INTEGER","notnull":false,"pk":1},
+    {"name":"customer_id","type":"INTEGER","notnull":true,"pk":0},
+    {"name":"status","type":"TEXT","notnull":true,"pk":0},
+    {"name":"order_total","type":"NUMERIC","notnull":true,"pk":0},
+    {"name":"currency","type":"TEXT","notnull":true,"pk":0},
+    {"name":"ordered_at","type":"TEXT","notnull":true,"pk":0},
+    {"name":"updated_at","type":"TEXT","notnull":true,"pk":0}
+  ],
+  "order_items": [
+    {"name":"order_id","type":"INTEGER","notnull":true,"pk":1},
+    {"name":"line_number","type":"INTEGER","notnull":true,"pk":2},
+    {"name":"product_id","type":"INTEGER","notnull":true,"pk":0},
+    {"name":"quantity","type":"INTEGER","notnull":true,"pk":0},
+    {"name":"unit_price","type":"NUMERIC","notnull":true,"pk":0}
+  ],
+  "payments": [
+    {"name":"payment_id","type":"INTEGER","notnull":false,"pk":1},
+    {"name":"order_id","type":"INTEGER","notnull":true,"pk":0},
+    {"name":"amount","type":"NUMERIC","notnull":true,"pk":0},
+    {"name":"status","type":"TEXT","notnull":true,"pk":0},
+    {"name":"paid_at","type":"TEXT","notnull":false,"pk":0},
+    {"name":"created_at","type":"TEXT","notnull":true,"pk":0}
+  ]
+}

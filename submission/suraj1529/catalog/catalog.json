@@ -1,0 +1,10 @@
+{
+  "datasets": [
+    {"name":"lake.cdc_events","layer":"lake","owner":"data-platform","intended_users":"engineering, audit","description":"Immutable CDC event history","update_cadence":"near-real-time"},
+    {"name":"warehouse.customers","layer":"warehouse","owner":"data-platform","intended_users":"analytics","description":"Current customer snapshot","update_cadence":"near-real-time"},
+    {"name":"warehouse.products","layer":"warehouse","owner":"data-platform","intended_users":"analytics","description":"Current product snapshot","update_cadence":"near-real-time"},
+    {"name":"warehouse.orders","layer":"warehouse","owner":"data-platform","intended_users":"analytics","description":"Current order snapshot","update_cadence":"near-real-time"},
+    {"name":"warehouse.order_items","layer":"warehouse","owner":"data-platform","intended_users":"analytics","description":"Current order line snapshot","update_cadence":"near-real-time"},
+    {"name":"warehouse.payments","layer":"warehouse","owner":"data-platform","intended_users":"analytics","description":"Current payment snapshot","update_cadence":"near-real-time"}
+  ]
+}
