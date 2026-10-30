@@ -1,0 +1,101 @@
+erDiagram
+    users ||--|| wallets : "owns"
+    users ||--o{ orders : "places"
+    wallets ||--o{ wallet_transactions : "ledger"
+    products ||--|| inventory : "stocked as"
+    products ||--o{ order_items : "sold as"
+    orders ||--|{ order_items : "contains"
+    orders ||--o{ payments : "paid by"
+    payments |o--o| wallet_transactions : "wallet debit"
+    order_items ||--o{ refunds : "refunded by"
+    payments ||--o{ refunds : "reversed by"
+    refunds |o--o| wallet_transactions : "wallet credit"
+
+    users {
+        TEXT user_id PK
+        TEXT name
+        TEXT email UK "PII"
+        TEXT phone "nullable, PII"
+        TEXT status "active|suspended|closed"
+        TEXT created_at
+        TEXT updated_at
+    }
+    products {
+        TEXT product_id PK
+        TEXT sku UK
+        TEXT name
+        TEXT category "nullable"
+        INTEGER price_paise "> 0"
+        TEXT status "active|discontinued"
+        TEXT created_at
+        TEXT updated_at
+    }
+    inventory {
+        TEXT product_id PK,FK
+        INTEGER on_hand ">= 0"
+        INTEGER reserved "<= on_hand"
+        TEXT updated_at
+    }
+    wallets {
+        TEXT wallet_id PK
+        TEXT user_id FK,UK
+        INTEGER balance_paise ">= 0"
+        TEXT currency "INR"
+        TEXT status "active|frozen|closed"
+        TEXT created_at
+        TEXT updated_at
+    }
+    wallet_transactions {
+        TEXT wallet_txn_id PK
+        TEXT wallet_id FK
+        TEXT type "topup|payment_debit|refund_credit"
+        INTEGER amount_paise "> 0"
+        INTEGER balance_after_paise ">= 0"
+        TEXT created_at
+    }
+    orders {
+        TEXT order_id PK
+        TEXT user_id FK
+        TEXT status "lifecycle"
+        INTEGER total_paise ">= 0"
+        TEXT currency "INR"
+        TEXT placed_at
+        TEXT paid_at "nullable"
+        TEXT shipped_at "nullable"
+        TEXT delivered_at "nullable"
+        TEXT cancelled_at "nullable"
+        TEXT updated_at
+    }
+    order_items {
+        TEXT order_id PK,FK
+        INTEGER line_no PK
+        TEXT product_id FK
+        INTEGER quantity "> 0"
+        INTEGER unit_price_paise ">= 0"
+        INTEGER line_total_paise "qty x unit price"
+    }
+    payments {
+        TEXT payment_id PK
+        TEXT order_id FK
+        TEXT method "wallet|card|upi"
+        INTEGER amount_paise "> 0"
+        TEXT status "initiated|success|failed"
+        TEXT provider_ref UK "card/UPI only"
+        TEXT wallet_txn_id FK "wallet only"
+        TEXT created_at
+        TEXT completed_at "nullable"
+    }
+    refunds {
+        TEXT refund_id PK
+        TEXT order_id FK
+        INTEGER line_no FK
+        TEXT payment_id FK
+        INTEGER quantity "> 0"
+        INTEGER amount_paise "> 0"
+        TEXT reason "damaged|wrong_item|not_needed|other"
+        TEXT status "requested|approved|rejected|processed"
+        TEXT provider_ref "card/UPI only"
+        TEXT wallet_txn_id FK "wallet only"
+        TEXT created_at
+        TEXT processed_at "nullable"
+    }

@@ -1,0 +1,10 @@
+# Pipeline configuration. Every key can be overridden by the env var in OPERATIONS.md §1.
+# Relative paths are resolved against this folder, not the current directory.
+source_db: data/source.db
+platform_db: data/platform.duckdb
+contract_path: contracts/source_contract.yml
+batch_size: 500
+poll_min_s: 0.2
+poll_max_s: 5
+freshness_warn_s: 60
+freshness_crit_s: 300

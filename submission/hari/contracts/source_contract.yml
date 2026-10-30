@@ -1,0 +1,201 @@
+# Source schema contract, version 1.
+# Single definition of column-level rules: it generates the SQLite DDL (types, NOT NULL,
+# CHECKs, indexes, triggers), the CDC triggers, the warehouse tables and the
+# column-level warehouse checks. Rule ids (S1..S14) refer to SCHEMA.md section 6.
+#   nullable/enum/PK/FK -> S1     min/max -> S2 (or `range_rule`)
+#   table_checks carry their own rule id.
+version: 1
+tables:
+
+  users:
+    primary_key: [user_id]
+    columns:
+      user_id:    {type: TEXT, nullable: false}
+      name:       {type: TEXT, nullable: false}
+      email:      {type: TEXT, nullable: false}
+      phone:      {type: TEXT, nullable: true}
+      status:     {type: TEXT, nullable: false, enum: [active, suspended, closed]}
+      created_at: {type: TEXT, nullable: false, timestamp: true}
+      updated_at: {type: TEXT, nullable: false, timestamp: true}
+    table_checks:
+      - {rule: S6, expr: "updated_at >= created_at"}
+    indexes:
+      - {name: ux_users_email, columns: [email], unique: true}
+    no_delete: true
+    pii: [email, phone]
+
+  products:
+    primary_key: [product_id]
+    columns:
+      product_id:  {type: TEXT, nullable: false}
+      sku:         {type: TEXT, nullable: false}
+      name:        {type: TEXT, nullable: false}
+      category:    {type: TEXT, nullable: true}
+      price_paise: {type: INTEGER, nullable: false, min: 1, money: true}
+      status:      {type: TEXT, nullable: false, enum: [active, discontinued]}
+      created_at:  {type: TEXT, nullable: false, timestamp: true}
+      updated_at:  {type: TEXT, nullable: false, timestamp: true}
+    indexes:
+      - {name: ux_products_sku, columns: [sku], unique: true}
+    pii: []
+
+  inventory:
+    primary_key: [product_id]
+    foreign_keys:
+      - {columns: [product_id], references: products, ref_columns: [product_id]}
+    columns:
+      product_id: {type: TEXT, nullable: false}
+      on_hand:    {type: INTEGER, nullable: false, min: 0, range_rule: S4}
+      reserved:   {type: INTEGER, nullable: false, min: 0, range_rule: S4}
+      updated_at: {type: TEXT, nullable: false, timestamp: true}
+    table_checks:
+      - {rule: S4, expr: "reserved <= on_hand"}
+    pii: []
+
+  wallets:
+    primary_key: [wallet_id]
+    foreign_keys:
+      - {columns: [user_id], references: users, ref_columns: [user_id]}
+    columns:
+      wallet_id:     {type: TEXT, nullable: false}
+      user_id:       {type: TEXT, nullable: false}
+      balance_paise: {type: INTEGER, nullable: false, min: 0, money: true}
+      currency:      {type: TEXT, nullable: false, enum: [INR]}
+      status:        {type: TEXT, nullable: false, enum: [active, frozen, closed]}
+      created_at:    {type: TEXT, nullable: false, timestamp: true}
+      updated_at:    {type: TEXT, nullable: false, timestamp: true}
+    indexes:
+      - {name: ux_wallets_user, columns: [user_id], unique: true}
+    no_delete: true
+    pii: []
+
+  wallet_transactions:
+    primary_key: [wallet_txn_id]
+    foreign_keys:
+      - {columns: [wallet_id], references: wallets, ref_columns: [wallet_id]}
+    columns:
+      wallet_txn_id:       {type: TEXT, nullable: false}
+      wallet_id:           {type: TEXT, nullable: false}
+      type:                {type: TEXT, nullable: false, enum: [topup, payment_debit, refund_credit]}
+      amount_paise:        {type: INTEGER, nullable: false, min: 1, money: true}
+      balance_after_paise: {type: INTEGER, nullable: false, min: 0, money: true}
+      created_at:          {type: TEXT, nullable: false, timestamp: true}
+    indexes:
+      - {name: ix_wallet_txn_wallet, columns: [wallet_id, created_at]}
+    append_only: true
+    no_delete: true
+    pii: []
+
+  orders:
+    primary_key: [order_id]
+    foreign_keys:
+      - {columns: [user_id], references: users, ref_columns: [user_id]}
+    columns:
+      order_id:     {type: TEXT, nullable: false}
+      user_id:      {type: TEXT, nullable: false}
+      status:       {type: TEXT, nullable: false,
+                     enum: [pending, paid, cancelled, shipped, delivered, partially_refunded, refunded]}
+      total_paise:  {type: INTEGER, nullable: false, min: 0, money: true}
+      currency:     {type: TEXT, nullable: false, enum: [INR]}
+      placed_at:    {type: TEXT, nullable: false, timestamp: true}
+      paid_at:      {type: TEXT, nullable: true, timestamp: true}
+      shipped_at:   {type: TEXT, nullable: true, timestamp: true}
+      delivered_at: {type: TEXT, nullable: true, timestamp: true}
+      cancelled_at: {type: TEXT, nullable: true, timestamp: true}
+      updated_at:   {type: TEXT, nullable: false, timestamp: true}
+    table_checks:
+      - {rule: S6, expr: "paid_at IS NULL OR paid_at >= placed_at"}
+      - {rule: S6, expr: "shipped_at IS NULL OR shipped_at >= placed_at"}
+      - {rule: S6, expr: "delivered_at IS NULL OR delivered_at >= placed_at"}
+      - {rule: S6, expr: "cancelled_at IS NULL OR cancelled_at >= placed_at"}
+    transitions:
+      column: status
+      allowed:
+        pending: [paid, cancelled]
+        paid: [shipped, cancelled]
+        shipped: [delivered]
+        delivered: [partially_refunded, refunded]
+        partially_refunded: [refunded]
+    indexes:
+      - {name: ix_orders_user_placed, columns: [user_id, placed_at]}
+      - {name: ix_orders_status, columns: [status]}
+    pii: []
+
+  order_items:
+    primary_key: [order_id, line_no]
+    foreign_keys:
+      - {columns: [order_id], references: orders, ref_columns: [order_id]}
+      - {columns: [product_id], references: products, ref_columns: [product_id]}
+    columns:
+      order_id:         {type: TEXT, nullable: false}
+      line_no:          {type: INTEGER, nullable: false, min: 1}
+      product_id:       {type: TEXT, nullable: false}
+      quantity:         {type: INTEGER, nullable: false, min: 1}
+      unit_price_paise: {type: INTEGER, nullable: false, min: 0, money: true}
+      line_total_paise: {type: INTEGER, nullable: false, min: 0, money: true}
+    table_checks:
+      - {rule: S3, expr: "line_total_paise = quantity * unit_price_paise"}
+    indexes:
+      - {name: ix_order_items_product, columns: [product_id]}
+    pii: []
+
+  payments:
+    primary_key: [payment_id]
+    foreign_keys:
+      - {columns: [order_id], references: orders, ref_columns: [order_id]}
+      - {columns: [wallet_txn_id], references: wallet_transactions, ref_columns: [wallet_txn_id]}
+    columns:
+      payment_id:    {type: TEXT, nullable: false}
+      order_id:      {type: TEXT, nullable: false}
+      method:        {type: TEXT, nullable: false, enum: [wallet, card, upi]}
+      amount_paise:  {type: INTEGER, nullable: false, min: 1, money: true}
+      status:        {type: TEXT, nullable: false, enum: [initiated, success, failed]}
+      provider_ref:  {type: TEXT, nullable: true}
+      wallet_txn_id: {type: TEXT, nullable: true}
+      created_at:    {type: TEXT, nullable: false, timestamp: true}
+      completed_at:  {type: TEXT, nullable: true, timestamp: true}
+    table_checks:
+      - {rule: S6, expr: "completed_at IS NULL OR completed_at >= created_at"}
+      - {rule: S7, expr: "NOT (wallet_txn_id IS NOT NULL AND provider_ref IS NOT NULL)"}
+      - {rule: S7, expr: "method = 'wallet' OR wallet_txn_id IS NULL"}
+      - {rule: S7, expr: "method <> 'wallet' OR provider_ref IS NULL"}
+      - {rule: S7, expr: "status <> 'success' OR (method = 'wallet' AND wallet_txn_id IS NOT NULL) OR (method <> 'wallet' AND provider_ref IS NOT NULL)"}
+    transitions:
+      column: status
+      allowed:
+        initiated: [success, failed]
+    indexes:
+      - {name: ix_payments_order, columns: [order_id]}
+      - {name: ux_payments_provider_ref, columns: [provider_ref], unique: true, where: "provider_ref IS NOT NULL"}
+    pii: []
+
+  refunds:
+    primary_key: [refund_id]
+    foreign_keys:
+      - {columns: [order_id, line_no], references: order_items, ref_columns: [order_id, line_no]}
+      - {columns: [payment_id], references: payments, ref_columns: [payment_id]}
+      - {columns: [wallet_txn_id], references: wallet_transactions, ref_columns: [wallet_txn_id]}
+    columns:
+      refund_id:     {type: TEXT, nullable: false}
+      order_id:      {type: TEXT, nullable: false}
+      line_no:       {type: INTEGER, nullable: false, min: 1}
+      payment_id:    {type: TEXT, nullable: false}
+      quantity:      {type: INTEGER, nullable: false, min: 1}
+      amount_paise:  {type: INTEGER, nullable: false, min: 1, money: true}
+      reason:        {type: TEXT, nullable: false, enum: [damaged, wrong_item, not_needed, other]}
+      status:        {type: TEXT, nullable: false, enum: [requested, approved, rejected, processed]}
+      provider_ref:  {type: TEXT, nullable: true}
+      wallet_txn_id: {type: TEXT, nullable: true}
+      created_at:    {type: TEXT, nullable: false, timestamp: true}
+      processed_at:  {type: TEXT, nullable: true, timestamp: true}
+    table_checks:
+      - {rule: S6, expr: "processed_at IS NULL OR processed_at >= created_at"}
+    transitions:
+      column: status
+      allowed:
+        requested: [approved, rejected]
+        approved: [processed]
+    indexes:
+      - {name: ix_refunds_line, columns: [order_id, line_no]}
+      - {name: ix_refunds_payment, columns: [payment_id]}
+    pii: []
