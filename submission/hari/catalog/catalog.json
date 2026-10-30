@@ -1,0 +1,609 @@
+{
+  "datasets": [
+    {
+      "name": "lake.cdc_events",
+      "layer": "lake",
+      "description": "Every change captured from the source, append-only and unique on seq. The source of truth for audit, replay and warehouse rebuilds.",
+      "owner": "data-platform",
+      "consumers": [
+        "platform",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": true,
+        "columns": [
+          "before",
+          "after"
+        ],
+        "treatment": "raw values (unhashed email and phone in users rows)"
+      },
+      "access": "restricted",
+      "schema": {
+        "seq": "BIGINT — Global change sequence number; unique; snapshot events use negative numbers",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "schema_version": "INTEGER — Contract version stamped by the capturing trigger",
+        "table_name": "VARCHAR — Source table",
+        "op": "VARCHAR — insert, update, delete or snapshot",
+        "pk": "VARCHAR — Primary key as JSON",
+        "before": "VARCHAR — Row image before the change as JSON; NULL on insert (contains raw PII)",
+        "after": "VARCHAR — Row image after the change as JSON; NULL on delete (contains raw PII)",
+        "changed_at": "TIMESTAMP — Source commit time (UTC)",
+        "batch_id": "VARCHAR — Pipeline batch that ingested the event",
+        "ingested_at": "TIMESTAMP — When the event was ingested",
+        "contract_version": "INTEGER — Contract version active at ingestion"
+      },
+      "example_query": "SELECT table_name, op, count(*) AS events FROM lake.cdc_events GROUP BY table_name, op ORDER BY table_name, op"
+    },
+    {
+      "name": "warehouse.users",
+      "layer": "warehouse",
+      "description": "Customer accounts (latest state). Email and phone are hashed.",
+      "owner": "identity-data",
+      "consumers": [
+        "analytics",
+        "product"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": true,
+        "columns": [
+          "email_hash",
+          "phone_hash"
+        ],
+        "treatment": "hashed (SHA-256)"
+      },
+      "access": "general",
+      "schema": {
+        "user_id": "VARCHAR — User identifier",
+        "name": "VARCHAR — Display name",
+        "email_hash": "VARCHAR — SHA-256 of the lower-cased, trimmed email (PII)",
+        "phone_hash": "VARCHAR — SHA-256 of the lower-cased, trimmed phone number (PII); NULL when no phone",
+        "status": "VARCHAR — Account status: active, suspended or closed",
+        "created_at": "TIMESTAMP — When the row was created (source time, UTC)",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)"
+      },
+      "example_query": "SELECT status, count(*) AS users FROM warehouse.users GROUP BY status"
+    },
+    {
+      "name": "warehouse.products",
+      "layer": "warehouse",
+      "description": "Sellable catalogue items (latest state).",
+      "owner": "catalog-data",
+      "consumers": [
+        "analytics",
+        "product"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "product_id": "VARCHAR — Product identifier",
+        "sku": "VARCHAR — Stock-keeping unit, unique per product",
+        "name": "VARCHAR — Display name",
+        "category": "VARCHAR — Catalogue category",
+        "price": "DECIMAL(18,2) — Unit price in rupees (source paise / 100)",
+        "status": "VARCHAR — Product status: active or discontinued",
+        "created_at": "TIMESTAMP — When the row was created (source time, UTC)",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)"
+      },
+      "example_query": "SELECT category, avg(price) AS avg_price FROM warehouse.products GROUP BY category"
+    },
+    {
+      "name": "warehouse.inventory",
+      "layer": "warehouse",
+      "description": "Stock on hand and reserved per product (latest state).",
+      "owner": "catalog-data",
+      "consumers": [
+        "analytics",
+        "product"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "product_id": "VARCHAR — Product the stock belongs to",
+        "on_hand": "BIGINT — Units physically in stock",
+        "reserved": "BIGINT — Units reserved by pending or paid orders",
+        "updated_at": "TIMESTAMP — When the stock last changed"
+      },
+      "example_query": "SELECT product_id, on_hand - reserved AS available FROM warehouse.inventory ORDER BY available"
+    },
+    {
+      "name": "warehouse.wallets",
+      "layer": "warehouse",
+      "description": "In-app wallets, one per user, with current balance.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "analytics"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "wallet_id": "VARCHAR — Wallet identifier",
+        "user_id": "VARCHAR — Owning user (one wallet per user)",
+        "balance": "DECIMAL(18,2) — Wallet balance in rupees",
+        "currency": "VARCHAR — Currency code (INR)",
+        "status": "VARCHAR — Wallet status: active, frozen or closed",
+        "created_at": "TIMESTAMP — When the row was created (source time, UTC)",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)"
+      },
+      "example_query": "SELECT sum(balance) AS total_wallet_balance FROM warehouse.wallets"
+    },
+    {
+      "name": "warehouse.wallet_transactions",
+      "layer": "warehouse",
+      "description": "Append-only wallet ledger: top-ups, payment debits and refund credits.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "analytics"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "wallet_txn_id": "VARCHAR — Wallet ledger entry identifier",
+        "wallet_id": "VARCHAR — Wallet identifier",
+        "type": "VARCHAR — Ledger entry type: topup, payment_debit or refund_credit",
+        "amount": "DECIMAL(18,2) — Amount in rupees (source paise / 100)",
+        "balance_after": "DECIMAL(18,2) — Wallet balance in rupees after this ledger entry",
+        "created_at": "TIMESTAMP — When the ledger entry was written"
+      },
+      "example_query": "SELECT type, sum(amount) AS total FROM warehouse.wallet_transactions GROUP BY type"
+    },
+    {
+      "name": "warehouse.orders",
+      "layer": "warehouse",
+      "description": "Orders with status lifecycle and timestamps (latest state).",
+      "owner": "commerce-data",
+      "consumers": [
+        "analytics",
+        "finance",
+        "product"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "order_id": "VARCHAR — Order identifier",
+        "user_id": "VARCHAR — Ordering user",
+        "status": "VARCHAR — Order status: pending, paid, cancelled, shipped, delivered, partially_refunded or refunded",
+        "total": "DECIMAL(18,2) — Order total in rupees",
+        "currency": "VARCHAR — Currency code (INR)",
+        "placed_at": "TIMESTAMP — When the order was placed",
+        "paid_at": "TIMESTAMP — When the order became fully paid",
+        "shipped_at": "TIMESTAMP — When the order shipped",
+        "delivered_at": "TIMESTAMP — When the order was delivered",
+        "cancelled_at": "TIMESTAMP — When the order was cancelled",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)"
+      },
+      "example_query": "SELECT status, count(*) AS orders, sum(total) AS revenue FROM warehouse.orders GROUP BY status"
+    },
+    {
+      "name": "warehouse.order_items",
+      "layer": "warehouse",
+      "description": "Lines of each order (latest state).",
+      "owner": "commerce-data",
+      "consumers": [
+        "analytics",
+        "product"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "order_id": "VARCHAR — Order identifier",
+        "line_no": "BIGINT — Line number within the order",
+        "product_id": "VARCHAR — Product ordered",
+        "quantity": "BIGINT — Units ordered or refunded",
+        "unit_price": "DECIMAL(18,2) — Unit price in rupees at order time",
+        "line_total": "DECIMAL(18,2) — quantity x unit_price in rupees"
+      },
+      "example_query": "SELECT product_id, sum(quantity) AS units_sold FROM warehouse.order_items GROUP BY product_id"
+    },
+    {
+      "name": "warehouse.payments",
+      "layer": "warehouse",
+      "description": "Every payment attempt (wallet, card, UPI), including failed ones.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "analytics"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "payment_id": "VARCHAR — Payment attempt identifier",
+        "order_id": "VARCHAR — Order being paid",
+        "method": "VARCHAR — Payment method: wallet, card or upi",
+        "amount": "DECIMAL(18,2) — Payment amount in rupees",
+        "status": "VARCHAR — Payment attempt status: initiated, success or failed",
+        "provider_ref": "VARCHAR — Payment gateway reference (card/UPI only)",
+        "wallet_txn_id": "VARCHAR — Ledger entry of a successful wallet payment",
+        "created_at": "TIMESTAMP — When the payment attempt started",
+        "completed_at": "TIMESTAMP — When the payment attempt completed"
+      },
+      "example_query": "SELECT method, status, sum(amount) AS amount FROM warehouse.payments GROUP BY method, status"
+    },
+    {
+      "name": "warehouse.refunds",
+      "layer": "warehouse",
+      "description": "Refund requests and their processing, paid back to the original method.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "analytics"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "refund_id": "VARCHAR — Refund identifier",
+        "order_id": "VARCHAR — Order being refunded",
+        "line_no": "BIGINT — Order line being refunded",
+        "payment_id": "VARCHAR — Original payment the refund goes back to",
+        "quantity": "BIGINT — Units refunded",
+        "amount": "DECIMAL(18,2) — Refund amount in rupees",
+        "reason": "VARCHAR — Refund reason",
+        "status": "VARCHAR — Refund status: requested, approved, rejected or processed",
+        "provider_ref": "VARCHAR — Gateway reference of a card/UPI refund",
+        "wallet_txn_id": "VARCHAR — Ledger entry of a wallet refund",
+        "created_at": "TIMESTAMP — When the refund was requested",
+        "processed_at": "TIMESTAMP — When the refund was processed"
+      },
+      "example_query": "SELECT status, count(*) AS refunds, sum(amount) AS amount FROM warehouse.refunds GROUP BY status"
+    },
+    {
+      "name": "warehouse.users_history",
+      "layer": "warehouse",
+      "description": "Every version of each users row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "identity-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": true,
+        "columns": [
+          "email_hash",
+          "phone_hash"
+        ],
+        "treatment": "hashed (SHA-256)"
+      },
+      "access": "general",
+      "schema": {
+        "user_id": "VARCHAR — User identifier",
+        "name": "VARCHAR — Display name",
+        "email_hash": "VARCHAR — SHA-256 of the lower-cased, trimmed email (PII)",
+        "phone_hash": "VARCHAR — SHA-256 of the lower-cased, trimmed phone number (PII); NULL when no phone",
+        "status": "VARCHAR — Account status: active, suspended or closed",
+        "created_at": "TIMESTAMP — When the row was created (source time, UTC)",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.users_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.products_history",
+      "layer": "warehouse",
+      "description": "Every version of each products row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "catalog-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "product_id": "VARCHAR — Product identifier",
+        "sku": "VARCHAR — Stock-keeping unit, unique per product",
+        "name": "VARCHAR — Display name",
+        "category": "VARCHAR — Catalogue category",
+        "price": "DECIMAL(18,2) — Unit price in rupees (source paise / 100)",
+        "status": "VARCHAR — Product status: active or discontinued",
+        "created_at": "TIMESTAMP — When the row was created (source time, UTC)",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.products_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.inventory_history",
+      "layer": "warehouse",
+      "description": "Every version of each inventory row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "catalog-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "product_id": "VARCHAR — Product the stock belongs to",
+        "on_hand": "BIGINT — Units physically in stock",
+        "reserved": "BIGINT — Units reserved by pending or paid orders",
+        "updated_at": "TIMESTAMP — When the stock last changed",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.inventory_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.wallets_history",
+      "layer": "warehouse",
+      "description": "Every version of each wallets row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "wallet_id": "VARCHAR — Wallet identifier",
+        "user_id": "VARCHAR — Owning user (one wallet per user)",
+        "balance": "DECIMAL(18,2) — Wallet balance in rupees",
+        "currency": "VARCHAR — Currency code (INR)",
+        "status": "VARCHAR — Wallet status: active, frozen or closed",
+        "created_at": "TIMESTAMP — When the row was created (source time, UTC)",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.wallets_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.wallet_transactions_history",
+      "layer": "warehouse",
+      "description": "Every version of each wallet_transactions row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "wallet_txn_id": "VARCHAR — Wallet ledger entry identifier",
+        "wallet_id": "VARCHAR — Wallet identifier",
+        "type": "VARCHAR — Ledger entry type: topup, payment_debit or refund_credit",
+        "amount": "DECIMAL(18,2) — Amount in rupees (source paise / 100)",
+        "balance_after": "DECIMAL(18,2) — Wallet balance in rupees after this ledger entry",
+        "created_at": "TIMESTAMP — When the ledger entry was written",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.wallet_transactions_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.orders_history",
+      "layer": "warehouse",
+      "description": "Every version of each orders row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "commerce-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "order_id": "VARCHAR — Order identifier",
+        "user_id": "VARCHAR — Ordering user",
+        "status": "VARCHAR — Order status: pending, paid, cancelled, shipped, delivered, partially_refunded or refunded",
+        "total": "DECIMAL(18,2) — Order total in rupees",
+        "currency": "VARCHAR — Currency code (INR)",
+        "placed_at": "TIMESTAMP — When the order was placed",
+        "paid_at": "TIMESTAMP — When the order became fully paid",
+        "shipped_at": "TIMESTAMP — When the order shipped",
+        "delivered_at": "TIMESTAMP — When the order was delivered",
+        "cancelled_at": "TIMESTAMP — When the order was cancelled",
+        "updated_at": "TIMESTAMP — When the row was last updated (source time, UTC)",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.orders_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.order_items_history",
+      "layer": "warehouse",
+      "description": "Every version of each order_items row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "commerce-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "order_id": "VARCHAR — Order identifier",
+        "line_no": "BIGINT — Line number within the order",
+        "product_id": "VARCHAR — Product ordered",
+        "quantity": "BIGINT — Units ordered or refunded",
+        "unit_price": "DECIMAL(18,2) — Unit price in rupees at order time",
+        "line_total": "DECIMAL(18,2) — quantity x unit_price in rupees",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.order_items_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.payments_history",
+      "layer": "warehouse",
+      "description": "Every version of each payments row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "payment_id": "VARCHAR — Payment attempt identifier",
+        "order_id": "VARCHAR — Order being paid",
+        "method": "VARCHAR — Payment method: wallet, card or upi",
+        "amount": "DECIMAL(18,2) — Payment amount in rupees",
+        "status": "VARCHAR — Payment attempt status: initiated, success or failed",
+        "provider_ref": "VARCHAR — Payment gateway reference (card/UPI only)",
+        "wallet_txn_id": "VARCHAR — Ledger entry of a successful wallet payment",
+        "created_at": "TIMESTAMP — When the payment attempt started",
+        "completed_at": "TIMESTAMP — When the payment attempt completed",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.payments_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    },
+    {
+      "name": "warehouse.refunds_history",
+      "layer": "warehouse",
+      "description": "Every version of each refunds row (SCD2) for point-in-time questions and audit; valid_from / valid_to are source commit times.",
+      "owner": "finance-data",
+      "consumers": [
+        "finance",
+        "audit"
+      ],
+      "update_cadence": "Every pipeline cycle (adaptive polling, 0.2 s - 5 s idle back-off); at most one cycle behind the source",
+      "pii": {
+        "contains_pii": false,
+        "columns": [],
+        "treatment": "none"
+      },
+      "access": "general",
+      "schema": {
+        "refund_id": "VARCHAR — Refund identifier",
+        "order_id": "VARCHAR — Order being refunded",
+        "line_no": "BIGINT — Order line being refunded",
+        "payment_id": "VARCHAR — Original payment the refund goes back to",
+        "quantity": "BIGINT — Units refunded",
+        "amount": "DECIMAL(18,2) — Refund amount in rupees",
+        "reason": "VARCHAR — Refund reason",
+        "status": "VARCHAR — Refund status: requested, approved, rejected or processed",
+        "provider_ref": "VARCHAR — Gateway reference of a card/UPI refund",
+        "wallet_txn_id": "VARCHAR — Ledger entry of a wallet refund",
+        "created_at": "TIMESTAMP — When the refund was requested",
+        "processed_at": "TIMESTAMP — When the refund was processed",
+        "valid_from": "TIMESTAMP — Start of validity: source commit time of this version",
+        "valid_to": "TIMESTAMP — End of validity (next version's valid_from); NULL while open",
+        "is_current": "BOOLEAN — TRUE for the latest live version of the row",
+        "op": "VARCHAR — Change operation: insert, update, delete or snapshot",
+        "seq": "BIGINT — Global change sequence number from the source change_log",
+        "txn_id": "VARCHAR — Source transaction identifier",
+        "_schema_version": "INTEGER — Contract version the change was captured under"
+      },
+      "example_query": "SELECT * FROM warehouse.refunds_history WHERE is_current ORDER BY valid_from DESC LIMIT 10"
+    }
+  ]
+}
